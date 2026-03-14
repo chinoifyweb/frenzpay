@@ -1,0 +1,26 @@
+import { AdminSidebar } from '@/components/admin/sidebar'
+import { AdminHeader } from '@/components/admin/header'
+
+export const metadata = {
+  title: 'Admin Panel',
+}
+
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <div className="min-h-screen bg-muted/30">
+      {/* Thin orange top bar to distinguish admin area */}
+      <div className="h-1 bg-gradient-to-r from-orange-500 via-orange-600 to-red-600 fixed top-0 left-0 right-0 z-50" />
+
+      <AdminSidebar />
+
+      <div className="lg:pl-64 pt-1">
+        <AdminHeader />
+        <main className="p-4 lg:p-6">{children}</main>
+      </div>
+    </div>
+  )
+}

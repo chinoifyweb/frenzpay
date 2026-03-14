@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16a34a;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <!-- Rounded square background -->
+  <rect width="512" height="512" rx="112" fill="url(#grad)"/>
+  <!-- Letter F with forward-leaning style -->
+  <path d="M168 128h176c13.3 0 24 10.7 24 24s-10.7 24-24 24H216v72h112c13.3 0 24 10.7 24 24s-10.7 24-24 24H216v88c0 13.3-10.7 24-24 24s-24-10.7-24-24V152c0-13.3 10.7-24 24-24z" fill="white"/>
+  <!-- Small arrow accent suggesting money flow -->
+  <path d="M340 320l36-36c6-6 16-6 22 0s6 16 0 22l-36 36c-6 6-16 6-22 0s-6-16 0-22z" fill="white" opacity="0.7"/>
+  <path d="M376 284v48c0 8.8-7.2 16-16 16s-16-7.2-16-16v-48c0-8.8 7.2-16 16-16s16 7.2 16 16z" fill="white" opacity="0.7"/>
+</svg>

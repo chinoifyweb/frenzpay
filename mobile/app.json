@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Frenz Pay",
+    "slug": "frenzpay",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#00C853",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "ng.frenz.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#00C853"
+      },
+      "package": "ng.frenz.app"
+    },
+    "scheme": "frenzpay",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ]
+  }
+}
