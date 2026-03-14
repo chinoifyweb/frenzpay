@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     // Check KYC status
     const { data: profile } = await supabase
-      .from('users')
+      .from('frenz_users')
       .select('kyc_status, is_active')
       .eq('id', user.id)
       .single()

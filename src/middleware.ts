@@ -47,7 +47,7 @@ export async function middleware(request: NextRequest) {
   // Admin route protection — check role from users table
   if (path.startsWith('/admin') && user) {
     const { data: profile } = await supabase
-      .from('users')
+      .from('frenz_users')
       .select('role')
       .eq('id', user.id)
       .single()
