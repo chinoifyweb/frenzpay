@@ -2,8 +2,12 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
+// Domain emails — all sending from verified frenz.ng domain
 const FROM_EMAIL = 'Frenz Pay <noreply@frenz.ng>'
+const FROM_SUPPORT = 'Frenz Pay Support <support@frenz.ng>'
+const FROM_HELLO = 'Frenz Pay <hello@frenz.ng>'
 const ADMIN_EMAIL = 'admin@frenz.ng'
+const SUPPORT_EMAIL = 'support@frenz.ng'
 
 // ─── Admin Notifications ──────────────────────────────
 
@@ -81,7 +85,7 @@ export async function sendAdminWithdrawalNotification(userName: string, amount: 
 
 export async function sendWelcomeEmail(email: string, name: string) {
   return resend.emails.send({
-    from: FROM_EMAIL,
+    from: FROM_HELLO,
     to: email,
     subject: 'Welcome to Frenz Pay!',
     html: `
@@ -162,7 +166,7 @@ export async function sendContactFormNotification(data: { name: string; email: s
 
 export async function sendKYCApprovedEmail(email: string, name: string) {
   return resend.emails.send({
-    from: FROM_EMAIL,
+    from: FROM_SUPPORT,
     to: email,
     subject: 'KYC Verification Approved!',
     html: `
@@ -190,7 +194,7 @@ export async function sendKYCApprovedEmail(email: string, name: string) {
 
 export async function sendKYCRejectedEmail(email: string, name: string, reason: string) {
   return resend.emails.send({
-    from: FROM_EMAIL,
+    from: FROM_SUPPORT,
     to: email,
     subject: 'KYC Verification Update',
     html: `
@@ -214,7 +218,7 @@ export async function sendKYCRejectedEmail(email: string, name: string, reason: 
 
 export async function sendWithdrawalCompleteEmail(email: string, name: string, amount: number, currency: string, txHash: string, network: string) {
   return resend.emails.send({
-    from: FROM_EMAIL,
+    from: FROM_SUPPORT,
     to: email,
     subject: `Withdrawal Complete: $${amount.toFixed(2)} ${currency}`,
     html: `
