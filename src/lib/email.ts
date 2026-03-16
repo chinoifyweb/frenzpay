@@ -6,8 +6,8 @@ const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM_EMAIL = 'Frenz Pay <noreply@frenz.ng>'
 const FROM_SUPPORT = 'Frenz Pay Support <support@frenz.ng>'
 const FROM_HELLO = 'Frenz Pay <hello@frenz.ng>'
-const ADMIN_EMAIL = 'admin@frenz.ng'
-const SUPPORT_EMAIL = 'support@frenz.ng'
+const ADMIN_EMAIL = 'chinoify04@gmail.com'
+const SUPPORT_EMAIL = 'chinoify04@gmail.com'
 
 // ─── Admin Notifications ──────────────────────────────
 
