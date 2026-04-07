@@ -150,10 +150,10 @@ export default function TermsPage() {
           <p>
             If you have any questions about these Terms, please contact us at{" "}
             <a
-              href="mailto:legal@frenz.ng"
+              href="mailto:legal@frenzpay.co"
               className="text-primary hover:underline"
             >
-              legal@frenz.ng
+              legal@frenzpay.co
             </a>
             .
           </p>

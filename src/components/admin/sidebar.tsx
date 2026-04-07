@@ -101,7 +101,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">Super Admin</p>
             <p className="text-xs text-muted-foreground truncate">
-              admin@frenz.ng
+              admin@frenzpay.co
             </p>
           </div>
           <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">

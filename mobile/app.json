@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "splash": {
       "backgroundColor": "#00C853",
       "resizeMode": "contain"
@@ -24,7 +23,15 @@
     "scheme": "frenzpay",
     "plugins": [
       "expo-router",
-      "expo-secure-store"
-    ]
+      "expo-secure-store",
+      "expo-font"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cbcb9462-af40-48e6-81ab-3742ad1da4b0"
+      }
+    },
+    "owner": "chinoifyweb"
   }
 }

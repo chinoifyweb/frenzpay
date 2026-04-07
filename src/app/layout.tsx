@@ -35,7 +35,7 @@ export const metadata: Metadata = {
     title: "Frenz Pay — Get Paid Globally, Withdraw in USDT",
     description:
       "Receive payments from anywhere in the world with virtual USD, GBP, and EUR accounts.",
-    url: "https://frenz.ng",
+    url: "https://frenzpay.co",
     siteName: "Frenz Pay",
     type: "website",
   },

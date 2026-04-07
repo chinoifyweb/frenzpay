@@ -378,5 +378,5 @@ INSERT INTO public.platform_settings (key, value, description) VALUES
   ('referral_bonus_usd', '5', 'Referral bonus amount in USD'),
   ('maintenance_mode', 'false', 'Enable maintenance mode'),
   ('announcement_text', '', 'Platform announcement banner text'),
-  ('support_email', 'support@frenz.ng', 'Support email address'),
+  ('support_email', 'support@frenzpay.co', 'Support email address'),
   ('platform_name', 'Frenz Pay', 'Platform display name');

@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { formatCurrency, getCurrencyColor, truncateAddress } from '../../lib/utils';
 import { mockWallets } from '../../lib/mockData';
+import { useTheme } from '../../lib/theme';
 import type { Currency, USDTNetwork } from '../../lib/types';
 
 type Step = 1 | 2 | 3;

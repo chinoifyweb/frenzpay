@@ -179,11 +179,11 @@ export default function ContactPage() {
                     For general inquiries and support.
                   </p>
                   <a
-                    href="mailto:hello@frenz.ng"
+                    href="mailto:hello@frenzpay.co"
                     className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
                   >
                     <Mail className="size-4" />
-                    hello@frenz.ng
+                    hello@frenzpay.co
                   </a>
                 </div>
 

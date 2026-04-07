@@ -147,10 +147,10 @@ export default function PrivacyPage() {
           <p>
             To exercise these rights, contact us at{" "}
             <a
-              href="mailto:privacy@frenz.ng"
+              href="mailto:privacy@frenzpay.co"
               className="text-primary hover:underline"
             >
-              privacy@frenz.ng
+              privacy@frenzpay.co
             </a>
             .
           </p>
@@ -199,10 +199,10 @@ export default function PrivacyPage() {
             For privacy-related inquiries, please contact our Data Protection
             Officer at{" "}
             <a
-              href="mailto:privacy@frenz.ng"
+              href="mailto:privacy@frenzpay.co"
               className="text-primary hover:underline"
             >
-              privacy@frenz.ng
+              privacy@frenzpay.co
             </a>
             .
           </p>

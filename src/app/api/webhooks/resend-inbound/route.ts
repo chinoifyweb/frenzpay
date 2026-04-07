@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     // Forward the email to Gmail
     await resend.emails.send({
-      from: `Frenz Pay Inbox <noreply@frenz.ng>`,
+      from: `Frenz Pay Inbox <noreply@frenzpay.co>`,
       to: FORWARD_TO,
       replyTo: sender,
       subject: `[${toAddresses}] ${subject || '(no subject)'}`,

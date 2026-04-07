@@ -64,7 +64,7 @@ const faqs = [
   {
     question: "What if I need help?",
     answer:
-      "Our support team is available via email at hello@frenz.ng. You can also reach us through our Contact page or via our social media channels. We typically respond within 24 hours.",
+      "Our support team is available via email at hello@frenzpay.co. You can also reach us through our Contact page or via our social media channels. We typically respond within 24 hours.",
   },
   {
     question: "How does the referral program work?",
@@ -126,7 +126,7 @@ export default function FAQPage() {
               Contact Support
             </Link>
             <a
-              href="mailto:hello@frenz.ng"
+              href="mailto:hello@frenzpay.co"
               className={cn(buttonVariants({ variant: "outline", size: "lg" }), "h-12 px-8 text-base")}
             >
               Email Us

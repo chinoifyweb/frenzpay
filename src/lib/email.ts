@@ -2,10 +2,10 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 
-// Domain emails — all sending from verified frenz.ng domain
-const FROM_EMAIL = 'Frenz Pay <noreply@frenz.ng>'
-const FROM_SUPPORT = 'Frenz Pay Support <support@frenz.ng>'
-const FROM_HELLO = 'Frenz Pay <hello@frenz.ng>'
+// Domain emails — all sending from verified frenzpay.co domain
+const FROM_EMAIL = 'Frenz Pay <noreply@frenzpay.co>'
+const FROM_SUPPORT = 'Frenz Pay Support <support@frenzpay.co>'
+const FROM_HELLO = 'Frenz Pay <hello@frenzpay.co>'
 const ADMIN_EMAIL = 'chinoify04@gmail.com'
 const SUPPORT_EMAIL = 'chinoify04@gmail.com'
 
@@ -49,7 +49,7 @@ export async function sendAdminNewKYCNotification(userName: string, userEmail: s
           <p style="margin: 0 0 8px; color: #6b7280; font-size: 13px;">Email</p>
           <p style="margin: 0 0 16px; color: #111; font-size: 15px; font-weight: 500;">${userEmail}</p>
         </div>
-        <a href="https://frenz.ng/admin/kyc" style="display: block; text-align: center; background: #22c55e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Review in Admin Panel</a>
+        <a href="https://frenzpay.co/admin/kyc" style="display: block; text-align: center; background: #22c55e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Review in Admin Panel</a>
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 24px 0 0;">Frenz Pay Admin Notification</p>
       </div>
     `,
@@ -74,7 +74,7 @@ export async function sendAdminWithdrawalNotification(userName: string, amount: 
           <p style="margin: 0 0 8px; color: #6b7280; font-size: 13px;">Network</p>
           <p style="margin: 0; color: #111; font-size: 15px; font-weight: 500;">${network.toUpperCase()}</p>
         </div>
-        <a href="https://frenz.ng/admin/withdrawals" style="display: block; text-align: center; background: #22c55e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Review in Admin Panel</a>
+        <a href="https://frenzpay.co/admin/withdrawals" style="display: block; text-align: center; background: #22c55e; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Review in Admin Panel</a>
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 24px 0 0;">Frenz Pay Admin Notification</p>
       </div>
     `,
@@ -104,9 +104,9 @@ export async function sendWelcomeEmail(email: string, name: string) {
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Download our mobile app to get started:</p>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="https://frenz.ng/#download" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Get the App</a>
+          <a href="https://frenzpay.co/#download" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Get the App</a>
         </div>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Need help? Chat with us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a> or email us at <a href="mailto:hello@frenz.ng" style="color: #22c55e; text-decoration: none;">hello@frenz.ng</a>.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Need help? Chat with us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a> or email us at <a href="mailto:hello@frenzpay.co" style="color: #22c55e; text-decoration: none;">hello@frenzpay.co</a>.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
       </div>
@@ -183,7 +183,7 @@ export async function sendKYCApprovedEmail(email: string, name: string) {
           <p style="margin: 0; color: #374151; font-size: 14px;">&#x2714; USDT withdrawals</p>
         </div>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="https://frenz.ng/#download" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Open App</a>
+          <a href="https://frenzpay.co/#download" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Open App</a>
         </div>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>

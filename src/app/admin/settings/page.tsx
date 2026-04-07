@@ -23,13 +23,13 @@ const mockAuditLogs = [
   { id: '6', admin: 'Admin User', action: 'Updated announcement', resource: 'Platform Settings', created_at: '2026-03-12T09:30:00Z' },
   { id: '7', admin: 'Admin User', action: 'Completed withdrawal', resource: 'WDR-006 ($1,200)', created_at: '2026-03-11T15:30:00Z' },
   { id: '8', admin: 'Admin User', action: 'Approved KYC', resource: 'Grace Adeyemi', created_at: '2026-03-11T12:00:00Z' },
-  { id: '9', admin: 'Admin User', action: 'Created admin user', resource: 'newadmin@frenz.ng', created_at: '2026-03-10T10:00:00Z' },
+  { id: '9', admin: 'Admin User', action: 'Created admin user', resource: 'newadmin@frenzpay.co', created_at: '2026-03-10T10:00:00Z' },
   { id: '10', admin: 'Admin User', action: 'Updated compliance settings', resource: 'Platform Settings', created_at: '2026-03-09T14:00:00Z' },
 ]
 
 export default function AdminSettingsPage() {
   const [platformName, setPlatformName] = useState('Frenz Pay')
-  const [supportEmail, setSupportEmail] = useState('support@frenz.ng')
+  const [supportEmail, setSupportEmail] = useState('support@frenzpay.co')
   const [announcement, setAnnouncement] = useState('')
   const [maintenanceMode, setMaintenanceMode] = useState(false)
 
@@ -192,15 +192,15 @@ export default function AdminSettingsPage() {
                 <div className="space-y-2">
                   <Label>API Base URL</Label>
                   <div className="flex gap-2">
-                    <Input value="https://frenz.ng/api" readOnly className="font-mono text-sm bg-muted" />
-                    <Button variant="outline" size="icon" onClick={() => copyToClipboard('https://frenz.ng/api')}><Copy className="h-4 w-4" /></Button>
+                    <Input value="https://frenzpay.co/api" readOnly className="font-mono text-sm bg-muted" />
+                    <Button variant="outline" size="icon" onClick={() => copyToClipboard('https://frenzpay.co/api')}><Copy className="h-4 w-4" /></Button>
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label>Webhook URL</Label>
                   <div className="flex gap-2">
-                    <Input value="https://frenz.ng/api/webhooks" readOnly className="font-mono text-sm bg-muted" />
-                    <Button variant="outline" size="icon" onClick={() => copyToClipboard('https://frenz.ng/api/webhooks')}><Copy className="h-4 w-4" /></Button>
+                    <Input value="https://frenzpay.co/api/webhooks" readOnly className="font-mono text-sm bg-muted" />
+                    <Button variant="outline" size="icon" onClick={() => copyToClipboard('https://frenzpay.co/api/webhooks')}><Copy className="h-4 w-4" /></Button>
                   </div>
                 </div>
                 <div className="space-y-2">
