@@ -204,10 +204,10 @@ export default function AdminSettingsPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <Label>Supabase Project</Label>
+                  <Label>Database</Label>
                   <div className="flex gap-2 items-center">
-                    <Input value="https://******.supabase.co" readOnly className="font-mono text-sm bg-muted" />
-                    <Badge variant="secondary">Masked</Badge>
+                    <Input value="postgresql://frenzpay_user@localhost/frenzpay_db" readOnly className="font-mono text-sm bg-muted" />
+                    <Badge variant="secondary">Self-hosted</Badge>
                   </div>
                 </div>
               </CardContent>

@@ -1,148 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-
-async function getSupabase() {
-  const cookieStore = await cookies()
-  return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll() },
-        setAll(cookiesToSet) {
-          try {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options))
-          } catch { /* server component */ }
-        },
-      },
-    }
-  )
-}
+import { getSession } from '@/lib/auth'
+import { query, queryOne } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabase()
-    const { data: { user } } = await supabase.auth.getUser()
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const user = await queryOne<{ kyc_status: string; is_active: boolean }>(
+      'SELECT kyc_status, is_active FROM users WHERE id = $1',
+      [session.userId]
+    )
 
-    // Check KYC status
-    const { data: profile } = await supabase
-      .from('frenz_users')
-      .select('kyc_status, is_active')
-      .eq('id', user.id)
-      .single()
+    if (!user?.is_active) return NextResponse.json({ error: 'Account is suspended' }, { status: 403 })
+    if (user?.kyc_status !== 'verified') return NextResponse.json({ error: 'KYC verification required' }, { status: 403 })
 
-    if (!profile?.is_active) {
-      return NextResponse.json({ error: 'Account is suspended' }, { status: 403 })
-    }
+    const body = await request.json()
+    const { wallet_id, amount, currency, withdrawal_type } = body
 
-    if (profile?.kyc_status !== 'verified') {
-      return NextResponse.json({ error: 'KYC verification required' }, { status: 403 })
-    }
-
-    const { wallet_id, amount, currency, wallet_address, network } = await request.json()
-
-    // Validate inputs
-    if (!wallet_id || !amount || !currency || !wallet_address || !network) {
+    if (!wallet_id || !amount || !currency || !withdrawal_type) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
+    if (amount < 10) return NextResponse.json({ error: 'Minimum withdrawal is $10' }, { status: 400 })
 
-    if (amount < 10) {
-      return NextResponse.json({ error: 'Minimum withdrawal is $10' }, { status: 400 })
-    }
+    const wallet = await queryOne<{ id: string; available_balance: number }>(
+      'SELECT id, available_balance FROM wallets WHERE id = $1 AND user_id = $2',
+      [wallet_id, session.userId]
+    )
+    if (!wallet) return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
+    if (wallet.available_balance < amount) return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 })
 
-    if (!['trc20', 'erc20'].includes(network)) {
-      return NextResponse.json({ error: 'Invalid network' }, { status: 400 })
-    }
-
-    // Basic wallet address validation
-    if (network === 'trc20' && !wallet_address.startsWith('T')) {
-      return NextResponse.json({ error: 'Invalid TRC-20 address' }, { status: 400 })
-    }
-    if (network === 'erc20' && !wallet_address.startsWith('0x')) {
-      return NextResponse.json({ error: 'Invalid ERC-20 address' }, { status: 400 })
-    }
-
-    // Check wallet belongs to user and has sufficient balance
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('id', wallet_id)
-      .eq('user_id', user.id)
-      .single()
-
-    if (!wallet) {
-      return NextResponse.json({ error: 'Wallet not found' }, { status: 404 })
-    }
-
-    // Calculate fees
     const feePercentage = 1.5 / 100
-    const networkFee = network === 'trc20' ? 1.0 : 5.0
-    const fee = amount * feePercentage + networkFee
-    const usdtRate = 1.0 // Simplified — in production, fetch real-time rate
-    const usdtAmount = (amount - fee) * usdtRate
+    let fee = amount * feePercentage
+    let insertValues: unknown[]
 
-    if (wallet.available_balance < amount) {
-      return NextResponse.json({ error: 'Insufficient balance' }, { status: 400 })
+    if (withdrawal_type === 'usdt') {
+      const { wallet_address, network } = body
+      if (!wallet_address || !network) return NextResponse.json({ error: 'Missing USDT withdrawal fields' }, { status: 400 })
+      const networkFee = network === 'trc20' ? 1.0 : 5.0
+      fee += networkFee
+      const usdtAmount = (amount - fee) * 1.0
+      insertValues = [session.userId, wallet_id, amount, currency, fee, usdtAmount, 1.0, wallet_address, network, 'usdt']
+      await query(
+        `INSERT INTO withdrawals (user_id, wallet_id, amount, currency, fee, usdt_amount, usdt_rate, wallet_address, network, withdrawal_type, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'pending')`,
+        insertValues
+      )
+    } else {
+      const { naira_bank_name, naira_account_number, naira_account_name } = body
+      if (!naira_bank_name || !naira_account_number || !naira_account_name) {
+        return NextResponse.json({ error: 'Missing Naira withdrawal fields' }, { status: 400 })
+      }
+      await query(
+        `INSERT INTO withdrawals (user_id, wallet_id, amount, currency, fee, naira_bank_name, naira_account_number, naira_account_name, withdrawal_type, status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'naira','pending')`,
+        [session.userId, wallet_id, amount, currency, fee, naira_bank_name, naira_account_number, naira_account_name]
+      )
     }
 
-    // Create withdrawal record
-    const { data: withdrawal, error: withdrawalError } = await supabase
-      .from('withdrawals')
-      .insert({
-        user_id: user.id,
-        wallet_id,
-        amount,
-        currency,
-        fee,
-        usdt_amount: usdtAmount,
-        usdt_rate: usdtRate,
-        wallet_address,
-        network,
-        status: 'pending',
-      })
-      .select()
-      .single()
+    // Deduct from wallet balance
+    await query(
+      'UPDATE wallets SET available_balance = available_balance - $1, updated_at = NOW() WHERE id = $2',
+      [amount, wallet_id]
+    )
 
-    if (withdrawalError) throw withdrawalError
+    // Create debit transaction record
+    const ref = `WDR-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`
+    await query(
+      `INSERT INTO transactions (user_id, wallet_id, type, amount, currency, fee, net_amount, description, reference, status)
+       VALUES ($1,$2,'debit',$3,$4,$5,$6,$7,$8,'pending')`,
+      [session.userId, wallet_id, amount, currency, fee, amount - fee, `${withdrawal_type === 'usdt' ? 'USDT' : 'Naira'} Withdrawal`, ref]
+    )
 
-    // Debit wallet (hold funds)
-    await supabase.rpc('decrement_wallet_balance', {
-      p_wallet_id: wallet_id,
-      p_amount: amount,
-    })
-
-    // Create debit transaction
-    await supabase.from('transactions').insert({
-      user_id: user.id,
-      wallet_id,
-      type: 'debit',
-      amount,
-      currency,
-      fee,
-      net_amount: amount - fee,
-      description: `USDT Withdrawal to ${wallet_address.slice(0, 8)}...`,
-      reference: `WDR-${withdrawal.id.slice(0, 8).toUpperCase()}`,
-      status: 'pending',
-    })
-
-    // Audit log
-    await supabase.from('audit_logs').insert({
-      user_id: user.id,
-      action: 'withdrawal_created',
-      resource_type: 'withdrawal',
-      resource_id: withdrawal.id,
-      metadata: { amount, currency, network, wallet_address },
-    })
-
-    return NextResponse.json({
-      message: 'Withdrawal submitted successfully',
-      withdrawal,
-    }, { status: 201 })
+    return NextResponse.json({ message: 'Withdrawal submitted successfully' }, { status: 201 })
   } catch (error) {
     console.error('Withdrawal error:', error)
     return NextResponse.json({ error: 'Something went wrong' }, { status: 500 })
@@ -151,18 +81,13 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   try {
-    const supabase = await getSupabase()
-    const { data: { user } } = await supabase.auth.getUser()
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const { data: withdrawals } = await supabase
-      .from('withdrawals')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
+    const withdrawals = await query(
+      'SELECT * FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50',
+      [session.userId]
+    )
 
     return NextResponse.json({ withdrawals })
   } catch (error) {

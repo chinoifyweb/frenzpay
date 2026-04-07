@@ -6,15 +6,13 @@ import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, EyeOff, Loader2, Chrome, ChevronDown } from 'lucide-react'
+import { Eye, EyeOff, Loader2, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Separator } from '@/components/ui/separator'
-import { createClient } from '@/lib/supabase'
 
 const signupSchema = z
   .object({
@@ -66,7 +64,6 @@ export default function SignupPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [showReferral, setShowReferral] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   const {
     register,
@@ -93,52 +90,30 @@ export default function SignupPage() {
   async function onSubmit(data: SignupFormData) {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signUp({
-        email: data.email,
-        password: data.password,
-        options: {
-          data: {
-            full_name: data.fullName,
-            phone: `+234${data.phone.replace(/^0/, '')}`,
-            referral_code: data.referralCode || undefined,
-          },
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: data.email,
+          password: data.password,
+          full_name: data.fullName,
+          referral_code: data.referralCode || undefined,
+        }),
       })
 
-      if (error) {
-        toast.error(error.message)
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error || 'Signup failed')
         return
       }
 
-      toast.success('Account created! Please check your email to verify.')
-      router.push('/verify-email')
+      toast.success('Account created! Welcome to Frenz Pay.')
+      router.push('/dashboard')
+      router.refresh()
     } catch {
       toast.error('An unexpected error occurred. Please try again.')
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  async function handleGoogleSignup() {
-    setIsGoogleLoading(true)
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      })
-
-      if (error) {
-        toast.error(error.message)
-      }
-    } catch {
-      toast.error('An unexpected error occurred. Please try again.')
-    } finally {
-      setIsGoogleLoading(false)
     }
   }
 

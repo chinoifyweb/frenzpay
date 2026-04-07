@@ -6,14 +6,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, EyeOff, Loader2, Chrome } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
-import { createClient } from '@/lib/supabase'
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -37,7 +35,6 @@ function LoginForm() {
 
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
 
   const {
     register,
@@ -50,14 +47,15 @@ function LoginForm() {
   async function onSubmit(data: LoginFormData) {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithPassword({
-        email: data.email,
-        password: data.password,
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
       })
 
-      if (error) {
-        toast.error(error.message)
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error || 'Login failed')
         return
       }
 
@@ -68,27 +66,6 @@ function LoginForm() {
       toast.error('An unexpected error occurred. Please try again.')
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  async function handleGoogleLogin() {
-    setIsGoogleLoading(true)
-    try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-        },
-      })
-
-      if (error) {
-        toast.error(error.message)
-      }
-    } catch {
-      toast.error('An unexpected error occurred. Please try again.')
-    } finally {
-      setIsGoogleLoading(false)
     }
   }
 
@@ -118,10 +95,7 @@ function LoginForm() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Password</Label>
-            <Link
-              href="/forgot-password"
-              className="text-sm text-primary hover:underline"
-            >
+            <Link href="/forgot-password" className="text-sm text-primary hover:underline">
               Forgot password?
             </Link>
           </div>
@@ -149,36 +123,11 @@ function LoginForm() {
           )}
         </div>
 
-        <Button
-          type="submit"
-          className="w-full h-10"
-          disabled={isLoading}
-        >
+        <Button type="submit" className="w-full h-10" disabled={isLoading}>
           {isLoading && <Loader2 className="size-4 animate-spin mr-2" />}
           Log In
         </Button>
       </form>
-
-      <div className="relative my-6">
-        <Separator />
-        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-3 text-xs text-muted-foreground">
-          or continue with
-        </span>
-      </div>
-
-      <Button
-        variant="outline"
-        className="w-full h-10"
-        onClick={handleGoogleLogin}
-        disabled={isGoogleLoading}
-      >
-        {isGoogleLoading ? (
-          <Loader2 className="size-4 animate-spin mr-2" />
-        ) : (
-          <Chrome className="size-4 mr-2" />
-        )}
-        Google
-      </Button>
 
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Don&apos;t have an account?{' '}

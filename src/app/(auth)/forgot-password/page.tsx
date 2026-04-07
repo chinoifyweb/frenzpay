@@ -11,7 +11,6 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { createClient } from '@/lib/supabase'
 
 const forgotPasswordSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -35,16 +34,12 @@ export default function ForgotPasswordPage() {
   async function onSubmit(data: ForgotPasswordFormData) {
     setIsLoading(true)
     try {
-      const supabase = createClient()
-      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
-        redirectTo: `${window.location.origin}/auth/callback?type=recovery`,
+      // Password reset email — always show success to prevent email enumeration
+      await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: data.email }),
       })
-
-      if (error) {
-        toast.error(error.message)
-        return
-      }
-
       setSubmittedEmail(data.email)
       setIsSuccess(true)
     } catch {
