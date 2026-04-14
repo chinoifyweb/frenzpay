@@ -6,27 +6,57 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(name="app.workers.notification_tasks.send_email")
-def send_email(to: str, subject: str, html: str):
+def send_email(to: str, subject: str, html: str, text: str = ""):
     import asyncio
-    asyncio.run(_send(to, subject, html))
+    asyncio.run(_send_email(to, subject, html, text))
 
 
-async def _send(to: str, subject: str, html: str):
+async def _send_email(to: str, subject: str, html: str, text: str = ""):
+    """Send a transactional email via Purelymail API."""
     import httpx
     from app.config import settings
 
-    if not settings.RESEND_API_KEY:
-        logger.warning(f"RESEND_API_KEY not set — skipping email to {to}")
+    if not settings.PURELYMAIL_API_KEY:
+        logger.warning(f"PURELYMAIL_API_KEY not set — skipping email to {to}")
         return
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
-            json={"from": settings.FROM_EMAIL, "to": [to], "subject": subject, "html": html},
-        )
-        if not resp.is_success:
-            logger.error(f"Resend email failed: {resp.status_code} {resp.text}")
+    payload: dict = {
+        "routingToken": settings.PURELYMAIL_API_KEY,
+        "to": to,
+        "from": settings.FROM_EMAIL,
+        "subject": subject,
+    }
+    if html:
+        payload["bodyHtml"] = html
+    if text:
+        payload["body"] = text
+    elif html:
+        # Strip basic tags for plain-text fallback
+        import re
+        payload["body"] = re.sub(r"<[^>]+>", "", html)
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                "https://purelymail.com/api/sendMessage",
+                json=payload,
+            )
+        if resp.is_success:
+            data = resp.json()
+            if data.get("errorCode"):
+                logger.error(
+                    f"Purelymail rejected email to {to}: "
+                    f"[{data['errorCode']}] {data.get('errorMessage', '')}"
+                )
+            else:
+                logger.info(f"Email sent to {to} via Purelymail — subject: {subject!r}")
+        else:
+            logger.error(
+                f"Purelymail HTTP error for email to {to}: "
+                f"{resp.status_code} {resp.text[:200]}"
+            )
+    except Exception as exc:
+        logger.exception(f"Unexpected error sending email to {to}: {exc}")
 
 
 @celery_app.task(name="app.workers.notification_tasks.send_sms")

@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     TERMII_API_KEY: str = ""
     TERMII_SENDER_ID: str = "FrenzPay"
 
-    # Resend (email)
-    RESEND_API_KEY: str = ""
+    # Purelymail (email)
+    PURELYMAIL_API_KEY: str = ""   # pm-live-... routing token
     FROM_EMAIL: str = "hello@frenzpay.co"
 
     # Monitoring

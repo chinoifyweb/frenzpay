@@ -211,7 +211,7 @@ export interface PlatformSettings {
   }
   email: {
     from_address: string
-    resend_configured: boolean
+    purelymail_configured: boolean
   }
   services: {
     graph_payment_rails: boolean

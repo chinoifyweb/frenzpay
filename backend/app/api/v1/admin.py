@@ -345,7 +345,7 @@ async def get_platform_settings(_: AdminUser):
         },
         "email": {
             "from_address": settings.FROM_EMAIL,
-            "resend_configured": bool(settings.RESEND_API_KEY),
+            "purelymail_configured": bool(settings.PURELYMAIL_API_KEY),
         },
         "services": {
             "graph_payment_rails": bool(settings.GRAPH_API_KEY),

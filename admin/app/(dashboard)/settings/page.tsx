@@ -154,7 +154,7 @@ export default function SettingsPage() {
             <ConfigRow label="From Address">
               <CopyableValue value={cfg.email.from_address} />
             </ConfigRow>
-            <ServiceBadge ok={cfg.email.resend_configured} label="Resend API Key" />
+            <ServiceBadge ok={cfg.email.purelymail_configured} label="Purelymail API Key" />
           </SectionCard>
 
           {/* Service Connections */}
