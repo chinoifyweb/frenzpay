@@ -36,7 +36,10 @@ def send_email(self, to: str, subject: str, html: str, text: str = ""):
 
     try:
         ctx = ssl.create_default_context()
-        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=ctx) as server:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as server:
+            server.ehlo()
+            server.starttls(context=ctx)
+            server.ehlo()
             server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
             server.sendmail(settings.FROM_EMAIL, [to], msg.as_string())
         logger.info(f"Email sent to {to} via Purelymail SMTP — subject: {subject!r}")

@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Purelymail SMTP (transactional email)
     PURELYMAIL_API_KEY: str = ""   # pm-live-... management API key
     SMTP_HOST: str = "smtp.purelymail.com"
-    SMTP_PORT: int = 465            # SSL; use 587 for STARTTLS
+    SMTP_PORT: int = 587            # STARTTLS (465 SSL is blocked on most VPS providers)
     SMTP_USERNAME: str = "noreply@frenzpay.co"
     SMTP_PASSWORD: str = ""         # app password from Purelymail
     FROM_EMAIL: str = "noreply@frenzpay.co"
