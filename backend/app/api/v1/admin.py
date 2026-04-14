@@ -345,7 +345,10 @@ async def get_platform_settings(_: AdminUser):
         },
         "email": {
             "from_address": settings.FROM_EMAIL,
-            "purelymail_configured": bool(settings.PURELYMAIL_API_KEY),
+            "smtp_host": settings.SMTP_HOST,
+            "smtp_port": settings.SMTP_PORT,
+            "smtp_username": settings.SMTP_USERNAME,
+            "smtp_configured": bool(settings.SMTP_PASSWORD),
         },
         "services": {
             "graph_payment_rails": bool(settings.GRAPH_API_KEY),

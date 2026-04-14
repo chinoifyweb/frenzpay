@@ -42,9 +42,13 @@ class Settings(BaseSettings):
     TERMII_API_KEY: str = ""
     TERMII_SENDER_ID: str = "FrenzPay"
 
-    # Purelymail (email)
-    PURELYMAIL_API_KEY: str = ""   # pm-live-... routing token
-    FROM_EMAIL: str = "hello@frenzpay.co"
+    # Purelymail SMTP (transactional email)
+    PURELYMAIL_API_KEY: str = ""   # pm-live-... management API key
+    SMTP_HOST: str = "smtp.purelymail.com"
+    SMTP_PORT: int = 465            # SSL; use 587 for STARTTLS
+    SMTP_USERNAME: str = "noreply@frenzpay.co"
+    SMTP_PASSWORD: str = ""         # app password from Purelymail
+    FROM_EMAIL: str = "noreply@frenzpay.co"
 
     # Monitoring
     SENTRY_DSN: str = ""

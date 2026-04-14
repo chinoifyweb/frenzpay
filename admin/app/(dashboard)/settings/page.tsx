@@ -150,11 +150,17 @@ export default function SettingsPage() {
           </SectionCard>
 
           {/* Email */}
-          <SectionCard title="Email" icon={Mail}>
+          <SectionCard title="Email (Purelymail SMTP)" icon={Mail}>
             <ConfigRow label="From Address">
               <CopyableValue value={cfg.email.from_address} />
             </ConfigRow>
-            <ServiceBadge ok={cfg.email.purelymail_configured} label="Purelymail API Key" />
+            <ConfigRow label="SMTP Host">
+              <CopyableValue value={`${cfg.email.smtp_host}:${cfg.email.smtp_port}`} />
+            </ConfigRow>
+            <ConfigRow label="SMTP Username">
+              <CopyableValue value={cfg.email.smtp_username} />
+            </ConfigRow>
+            <ServiceBadge ok={cfg.email.smtp_configured} label="SMTP App Password" />
           </SectionCard>
 
           {/* Service Connections */}

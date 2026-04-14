@@ -211,7 +211,10 @@ export interface PlatformSettings {
   }
   email: {
     from_address: string
-    purelymail_configured: boolean
+    smtp_host: string
+    smtp_port: number
+    smtp_username: string
+    smtp_configured: boolean
   }
   services: {
     graph_payment_rails: boolean

@@ -1,62 +1,54 @@
 import logging
+import smtplib
+import ssl
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
 
-@celery_app.task(name="app.workers.notification_tasks.send_email")
-def send_email(to: str, subject: str, html: str, text: str = ""):
-    import asyncio
-    asyncio.run(_send_email(to, subject, html, text))
-
-
-async def _send_email(to: str, subject: str, html: str, text: str = ""):
-    """Send a transactional email via Purelymail API."""
-    import httpx
+@celery_app.task(name="app.workers.notification_tasks.send_email", bind=True, max_retries=3)
+def send_email(self, to: str, subject: str, html: str, text: str = ""):
+    """Send a transactional email via Purelymail SMTP (SSL on port 465)."""
     from app.config import settings
 
-    if not settings.PURELYMAIL_API_KEY:
-        logger.warning(f"PURELYMAIL_API_KEY not set — skipping email to {to}")
+    if not settings.SMTP_PASSWORD:
+        logger.warning(f"SMTP_PASSWORD not set — skipping email to {to}")
         return
 
-    payload: dict = {
-        "routingToken": settings.PURELYMAIL_API_KEY,
-        "to": to,
-        "from": settings.FROM_EMAIL,
-        "subject": subject,
-    }
-    if html:
-        payload["bodyHtml"] = html
-    if text:
-        payload["body"] = text
-    elif html:
-        # Strip basic tags for plain-text fallback
+    # Build MIME message
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"FrenzPay <{settings.FROM_EMAIL}>"
+    msg["To"] = to
+
+    # Plain-text fallback
+    if not text and html:
         import re
-        payload["body"] = re.sub(r"<[^>]+>", "", html)
+        text = re.sub(r"<[^>]+>", "", html).strip()
+
+    if text:
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+    if html:
+        msg.attach(MIMEText(html, "html", "utf-8"))
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.post(
-                "https://purelymail.com/api/sendMessage",
-                json=payload,
-            )
-        if resp.is_success:
-            data = resp.json()
-            if data.get("errorCode"):
-                logger.error(
-                    f"Purelymail rejected email to {to}: "
-                    f"[{data['errorCode']}] {data.get('errorMessage', '')}"
-                )
-            else:
-                logger.info(f"Email sent to {to} via Purelymail — subject: {subject!r}")
-        else:
-            logger.error(
-                f"Purelymail HTTP error for email to {to}: "
-                f"{resp.status_code} {resp.text[:200]}"
-            )
+        ctx = ssl.create_default_context()
+        with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, context=ctx) as server:
+            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            server.sendmail(settings.FROM_EMAIL, [to], msg.as_string())
+        logger.info(f"Email sent to {to} via Purelymail SMTP — subject: {subject!r}")
+    except smtplib.SMTPAuthenticationError as exc:
+        logger.error(f"SMTP auth failed sending to {to}: {exc}")
+        raise self.retry(exc=exc, countdown=60)
+    except smtplib.SMTPException as exc:
+        logger.error(f"SMTP error sending to {to}: {exc}")
+        raise self.retry(exc=exc, countdown=30)
     except Exception as exc:
         logger.exception(f"Unexpected error sending email to {to}: {exc}")
+        raise self.retry(exc=exc, countdown=60)
 
 
 @celery_app.task(name="app.workers.notification_tasks.send_sms")
