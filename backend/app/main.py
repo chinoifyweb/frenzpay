@@ -74,6 +74,17 @@ app.include_router(webhooks.router, prefix=API_PREFIX)
 app.include_router(admin.router, prefix=API_PREFIX)
 
 
+@app.get("/")
+async def root():
+    return {
+        "name": "FrenzPay API",
+        "version": "1.0.0",
+        "status": "online",
+        "environment": settings.APP_ENV,
+        "docs": "/api/docs" if settings.APP_ENV != "production" else None,
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "env": settings.APP_ENV}
