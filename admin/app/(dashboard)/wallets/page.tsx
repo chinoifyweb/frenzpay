@@ -142,8 +142,8 @@ export default function WalletsPage() {
                   <XAxis dataKey="currency" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
-                    formatter={(v: number, _: string, entry: { payload: { currency: string } }) =>
-                      [`${v.toLocaleString(undefined, { minimumFractionDigits: 2 })} ${entry.payload.currency}`, 'Balance']
+                    formatter={(v: number) =>
+                      [Number(v).toLocaleString(undefined, { minimumFractionDigits: 2 }), 'Balance']
                     }
                   />
                   <Bar dataKey="total_balance" radius={[4, 4, 0, 0]}>
