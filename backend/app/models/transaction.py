@@ -81,7 +81,7 @@ class Transaction(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tx_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="transactions")
     ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
