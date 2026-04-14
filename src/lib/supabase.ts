@@ -1,8 +1,5 @@
-import { createBrowserClient } from '@supabase/ssr'
-
+// Supabase removed — app uses direct PostgreSQL + JWT auth.
+// This stub prevents build errors in pages not yet fully migrated.
 export function createClient() {
-  return createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  return null as never
 }
