@@ -31,7 +31,7 @@ class AuditLog(Base):
     resource_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
-    metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    log_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
     )
