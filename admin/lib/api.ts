@@ -21,7 +21,12 @@ async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err?.detail?.message || err?.message || res.statusText)
+    // FastAPI returns { detail: "string" } — not { detail: { message: "..." } }
+    const msg =
+      (typeof err?.detail === 'string' ? err.detail : null) ||
+      err?.message ||
+      res.statusText
+    throw new Error(msg)
   }
   return res.json()
 }
@@ -42,6 +47,7 @@ export const api = {
     req<Paginated<AdminUser>>(
       `/api/v1/admin/users?page=${page}&search=${encodeURIComponent(search)}&role=${role}`
     ),
+  userDetail: (id: string) => req<AdminUserDetail>(`/api/v1/admin/users/${id}`),
   freezeUser: (id: string) =>
     req(`/api/v1/admin/users/${id}/freeze`, { method: 'POST' }),
   activateUser: (id: string) =>
@@ -59,13 +65,25 @@ export const api = {
     }),
 
   // Transactions
-  transactions: (page = 1, status = '') =>
+  transactions: (page = 1, status = '', search = '') =>
     req<Paginated<TxItem>>(
-      `/api/v1/admin/transactions?page=${page}&status=${status}`
+      `/api/v1/admin/transactions?page=${page}&status=${status}&search=${encodeURIComponent(search)}`
     ),
 
   // Risk flags
   riskFlags: () => req<RiskFlag[]>('/api/v1/admin/risk-flags'),
+
+  // Wallets
+  wallets: () => req<WalletOverview>('/api/v1/admin/wallets'),
+
+  // Audit logs
+  auditLogs: (page = 1, action = '') =>
+    req<Paginated<AuditLogItem>>(
+      `/api/v1/admin/audit-logs?page=${page}&action=${encodeURIComponent(action)}`
+    ),
+
+  // Settings
+  platformSettings: () => req<PlatformSettings>('/api/v1/admin/settings'),
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -92,6 +110,28 @@ export interface AdminUser {
   account_status: string
   country: string
   created_at: string
+}
+
+export interface AdminUserDetail extends AdminUser {
+  wallets: {
+    currency: string
+    balance: number
+    available: number
+    held: number
+    status: string
+  }[]
+  transaction_count: number
+  total_sent_usd: number
+  recent_transactions: {
+    reference: string
+    type: string
+    amount: number
+    currency: string
+    dest_amount: number
+    dest_currency: string
+    status: string
+    date: string
+  }[]
 }
 
 export interface KYCItem {
@@ -125,6 +165,62 @@ export interface RiskFlag {
   severity: string
   status: string
   created_at: string
+}
+
+export interface WalletOverview {
+  total_wallets: number
+  frozen_wallets: number
+  by_currency: {
+    currency: string
+    wallet_count: number
+    total_balance: number
+  }[]
+  top_usd_wallets: {
+    user_email: string
+    user_name: string
+    balance: number
+    available: number
+    held: number
+    status: string
+  }[]
+}
+
+export interface AuditLogItem {
+  id: number
+  user_email: string | null
+  admin_id: string | null
+  action: string
+  resource_type: string | null
+  resource_id: string | null
+  ip_address: string | null
+  created_at: string
+}
+
+export interface PlatformSettings {
+  platform: {
+    environment: string
+    app_url: string
+    api_url: string
+  }
+  auth: {
+    access_token_ttl_minutes: number
+    refresh_token_ttl_days: number
+    jwt_algorithm: string
+    otp_ttl_minutes: number
+    otp_max_attempts: number
+  }
+  email: {
+    from_address: string
+    resend_configured: boolean
+  }
+  services: {
+    graph_payment_rails: boolean
+    dojah_kyc: boolean
+    termii_sms: boolean
+    sentry_monitoring: boolean
+    telegram_alerts: boolean
+  }
+  cors_origins: string[]
 }
 
 export interface Paginated<T> {

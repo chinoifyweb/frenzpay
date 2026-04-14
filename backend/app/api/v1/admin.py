@@ -277,15 +277,27 @@ async def list_transactions(
     db: AsyncSession = Depends(get_db),
     page: int = 1,
     status: str = "",
+    search: str = "",
 ):
     q = select(Transaction, User).join(User)
     if status:
         q = q.where(Transaction.status == status)
-    total = (await db.execute(
-        select(func.count(Transaction.id)).where(
-            Transaction.status == status if status else True
+    if search:
+        q = q.where(
+            (Transaction.reference.ilike(f"%{search}%")) |
+            (User.email.ilike(f"%{search}%"))
         )
-    )).scalar()
+
+    count_q = select(func.count(Transaction.id)).join(User)
+    if status:
+        count_q = count_q.where(Transaction.status == status)
+    if search:
+        count_q = count_q.where(
+            (Transaction.reference.ilike(f"%{search}%")) |
+            (User.email.ilike(f"%{search}%"))
+        )
+    total = (await db.execute(count_q)).scalar()
+
     rows = (await db.execute(
         q.order_by(Transaction.initiated_at.desc()).offset((page - 1) * 50).limit(50)
     )).all()
@@ -312,6 +324,196 @@ async def list_transactions(
 @router.get("/risk-flags")
 async def risk_flags(_: AdminUser):
     return []  # TODO: implement risk_flags table
+
+
+# ── Settings (platform config overview — no secrets exposed) ──────────────────
+
+@router.get("/settings")
+async def get_platform_settings(_: AdminUser):
+    return {
+        "platform": {
+            "environment": settings.APP_ENV,
+            "app_url": settings.APP_URL,
+            "api_url": settings.API_URL,
+        },
+        "auth": {
+            "access_token_ttl_minutes": settings.JWT_ACCESS_TTL_MINUTES,
+            "refresh_token_ttl_days": settings.JWT_REFRESH_TTL_DAYS,
+            "jwt_algorithm": settings.JWT_ALGORITHM,
+            "otp_ttl_minutes": settings.OTP_TTL_MINUTES,
+            "otp_max_attempts": settings.OTP_MAX_ATTEMPTS,
+        },
+        "email": {
+            "from_address": settings.FROM_EMAIL,
+            "resend_configured": bool(settings.RESEND_API_KEY),
+        },
+        "services": {
+            "graph_payment_rails": bool(settings.GRAPH_API_KEY),
+            "dojah_kyc": bool(settings.DOJAH_APP_ID and settings.DOJAH_PRIVATE_KEY),
+            "termii_sms": bool(settings.TERMII_API_KEY),
+            "sentry_monitoring": bool(settings.SENTRY_DSN),
+            "telegram_alerts": bool(
+                settings.ADMIN_ALERT_TELEGRAM_BOT_TOKEN and settings.ADMIN_ALERT_CHAT_ID
+            ),
+        },
+        "cors_origins": settings.CORS_ORIGINS,
+    }
+
+
+# ── Wallets overview ───────────────────────────────────────────────────────────
+
+@router.get("/wallets")
+async def wallet_overview(_: AdminUser, db: AsyncSession = Depends(get_db)):
+    from app.models.wallet import Currency, Wallet, WalletStatus
+
+    total = (await db.execute(select(func.count(Wallet.id)))).scalar()
+    frozen = (await db.execute(
+        select(func.count(Wallet.id)).where(Wallet.status == WalletStatus.FROZEN)
+    )).scalar()
+
+    by_currency = []
+    for currency in Currency:
+        count = (await db.execute(
+            select(func.count(Wallet.id)).where(Wallet.currency == currency)
+        )).scalar()
+        if not count:
+            continue
+        total_bal = (await db.execute(
+            select(func.coalesce(func.sum(Wallet.balance), 0)).where(
+                Wallet.currency == currency,
+                Wallet.status == WalletStatus.ACTIVE,
+            )
+        )).scalar()
+        by_currency.append({
+            "currency": currency.value,
+            "wallet_count": count,
+            "total_balance": float(total_bal),
+        })
+
+    top_rows = (await db.execute(
+        select(Wallet, User)
+        .join(User)
+        .where(Wallet.currency == Currency.USD)
+        .order_by(Wallet.balance.desc())
+        .limit(10)
+    )).all()
+
+    return {
+        "total_wallets": total,
+        "frozen_wallets": frozen,
+        "by_currency": by_currency,
+        "top_usd_wallets": [
+            {
+                "user_email": u.email,
+                "user_name": u.full_name,
+                "balance": float(w.balance),
+                "available": float(w.available_balance),
+                "held": float(w.held_balance),
+                "status": w.status.value,
+            }
+            for w, u in top_rows
+        ],
+    }
+
+
+# ── Audit logs ────────────────────────────────────────────────────────────────
+
+@router.get("/audit-logs")
+async def list_audit_logs(
+    _: AdminUser,
+    db: AsyncSession = Depends(get_db),
+    page: int = 1,
+    action: str = "",
+):
+    q = select(AuditLog, User).outerjoin(User, AuditLog.user_id == User.id)
+    if action:
+        q = q.where(AuditLog.action.ilike(f"%{action}%"))
+
+    count_q = select(func.count(AuditLog.id))
+    if action:
+        count_q = count_q.where(AuditLog.action.ilike(f"%{action}%"))
+    total = (await db.execute(count_q)).scalar()
+
+    rows = (await db.execute(
+        q.order_by(AuditLog.created_at.desc()).offset((page - 1) * 50).limit(50)
+    )).all()
+
+    items = [
+        {
+            "id": log.id,
+            "user_email": user.email if user else None,
+            "admin_id": str(log.admin_id) if log.admin_id else None,
+            "action": log.action,
+            "resource_type": log.resource_type,
+            "resource_id": log.resource_id,
+            "ip_address": log.ip_address,
+            "created_at": log.created_at.isoformat(),
+        }
+        for log, user in rows
+    ]
+    return {"items": items, "total": total, "page": page, "pages": max(1, (total + 49) // 50)}
+
+
+# ── User detail ───────────────────────────────────────────────────────────────
+
+@router.get("/users/{user_id}")
+async def get_user_detail(user_id: str, _: AdminUser, db: AsyncSession = Depends(get_db)):
+    from app.models.wallet import Wallet
+
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+
+    wallets = (await db.execute(
+        select(Wallet).where(Wallet.user_id == user.id)
+    )).scalars().all()
+
+    tx_count = (await db.execute(
+        select(func.count(Transaction.id)).where(Transaction.user_id == user.id)
+    )).scalar()
+    total_sent = (await db.execute(
+        select(func.coalesce(func.sum(Transaction.source_amount), 0)).where(
+            Transaction.user_id == user.id,
+            Transaction.status == TransactionStatus.COMPLETED,
+        )
+    )).scalar()
+
+    recent_tx = (await db.execute(
+        select(Transaction)
+        .where(Transaction.user_id == user.id)
+        .order_by(Transaction.initiated_at.desc())
+        .limit(5)
+    )).scalars().all()
+
+    return {
+        **_user_dict(user),
+        "wallets": [
+            {
+                "currency": w.currency.value,
+                "balance": float(w.balance),
+                "available": float(w.available_balance),
+                "held": float(w.held_balance),
+                "status": w.status.value,
+            }
+            for w in wallets
+        ],
+        "transaction_count": tx_count,
+        "total_sent_usd": float(total_sent),
+        "recent_transactions": [
+            {
+                "reference": tx.reference,
+                "type": tx.type.value,
+                "amount": float(tx.source_amount),
+                "currency": tx.source_currency,
+                "dest_amount": float(tx.destination_amount),
+                "dest_currency": tx.destination_currency,
+                "status": tx.status.value,
+                "date": tx.initiated_at.isoformat(),
+            }
+            for tx in recent_tx
+        ],
+    }
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
