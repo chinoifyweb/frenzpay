@@ -1,6 +1,8 @@
 import logging
 import smtplib
 import ssl
+import uuid
+from email import utils as email_utils
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @celery_app.task(name="app.workers.notification_tasks.send_email", bind=True, max_retries=3)
 def send_email(self, to: str, subject: str, html: str, text: str = ""):
-    """Send a transactional email via Purelymail SMTP (SSL on port 465)."""
+    """Send a transactional email via Purelymail SMTP (STARTTLS on port 587)."""
     from app.config import settings
 
     if not settings.SMTP_PASSWORD:
@@ -23,6 +25,10 @@ def send_email(self, to: str, subject: str, html: str, text: str = ""):
     msg["Subject"] = subject
     msg["From"] = f"FrenzPay <{settings.FROM_EMAIL}>"
     msg["To"] = to
+    # Required headers for spam-filter compliance
+    msg["Date"] = email_utils.formatdate(localtime=False)
+    msg["Message-ID"] = f"<{uuid.uuid4()}@frenzpay.co>"
+    msg["MIME-Version"] = "1.0"
 
     # Plain-text fallback
     if not text and html:
