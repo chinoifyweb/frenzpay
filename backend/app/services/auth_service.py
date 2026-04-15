@@ -187,6 +187,31 @@ async def request_password_reset(email: str, db: AsyncSession) -> str | None:
     return await _create_otp(user.id, email, OTPPurpose.PASSWORD_RESET, db)
 
 
+async def request_password_reset_with_user(
+    email: str, db: AsyncSession
+) -> tuple[User, str] | None:
+    """Like request_password_reset but also returns the User for email personalisation."""
+    result = await db.execute(select(User).where(User.email == email.lower()))
+    user = result.scalar_one_or_none()
+    if not user:
+        return None
+    otp = await _create_otp(user.id, email, OTPPurpose.PASSWORD_RESET, db)
+    return user, otp
+
+
+async def resend_signup_otp(identifier: str, db: AsyncSession) -> str | None:
+    """Generate a fresh signup OTP for the given phone or email identifier."""
+    result = await db.execute(
+        select(User).where(
+            (User.email == identifier.lower()) | (User.phone == identifier)
+        )
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        return None
+    return await _create_otp(user.id, identifier, OTPPurpose.SIGNUP, db)
+
+
 async def reset_password(email: str, otp: str, new_password: str, db: AsyncSession) -> None:
     otp_record = await _get_valid_otp(email, OTPPurpose.PASSWORD_RESET, db)
     _check_and_consume_otp(otp_record, otp)
