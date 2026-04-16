@@ -245,8 +245,19 @@ async def approve_kyc(submission_id: str, _: AdminUser, db: AsyncSession = Depen
     user = user_result.scalar_one_or_none()
     if user:
         tier_map = {KYCTierLevel.TIER_1: KYCTier.TIER_1, KYCTierLevel.TIER_2: KYCTier.TIER_2, KYCTierLevel.TIER_3: KYCTier.TIER_3}
-        user.kyc_tier = tier_map.get(sub.tier, user.kyc_tier)
+        new_tier = tier_map.get(sub.tier, user.kyc_tier)
+        old_tier = user.kyc_tier
+        user.kyc_tier = new_tier
         user.kyc_status = KYCStatus.APPROVED
+
+        # Provision wallets when tier changes
+        if new_tier != old_tier:
+            from app.services.wallet_service import provision_tier1_wallets, provision_tier2_wallets
+            if new_tier == KYCTier.TIER_1:
+                await provision_tier1_wallets(user, db)
+            elif new_tier == KYCTier.TIER_2:
+                await provision_tier1_wallets(user, db)
+                await provision_tier2_wallets(user, db)
     return {"status": "approved"}
 
 
@@ -267,6 +278,44 @@ async def reject_kyc(
     sub.status = KYCSubmissionStatus.REJECTED
     sub.rejection_reason = data.reason
     return {"status": "rejected"}
+
+
+# ── Per-wallet actions ────────────────────────────────────────────────────────
+
+@router.post("/wallets/{wallet_id}/freeze")
+async def freeze_wallet(wallet_id: str, _: AdminUser, db: AsyncSession = Depends(get_db)):
+    from app.models.wallet import Wallet, WalletStatus
+    result = await db.execute(select(Wallet).where(Wallet.id == uuid.UUID(wallet_id)))
+    wallet = result.scalar_one_or_none()
+    if not wallet:
+        raise HTTPException(404, "Wallet not found")
+    wallet.status = WalletStatus.FROZEN
+    return {"status": "frozen"}
+
+
+@router.post("/wallets/{wallet_id}/unfreeze")
+async def unfreeze_wallet(wallet_id: str, _: AdminUser, db: AsyncSession = Depends(get_db)):
+    from app.models.wallet import Wallet, WalletStatus
+    result = await db.execute(select(Wallet).where(Wallet.id == uuid.UUID(wallet_id)))
+    wallet = result.scalar_one_or_none()
+    if not wallet:
+        raise HTTPException(404, "Wallet not found")
+    wallet.status = WalletStatus.ACTIVE
+    return {"status": "active"}
+
+
+@router.post("/users/{user_id}/provision-wallets")
+async def provision_wallets_for_user(user_id: str, _: AdminUser, db: AsyncSession = Depends(get_db)):
+    """Manually trigger wallet provisioning for a user (e.g., after manual KYC approval)."""
+    result = await db.execute(select(User).where(User.id == uuid.UUID(user_id)))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(404, "User not found")
+    from app.services.wallet_service import provision_tier1_wallets, provision_tier2_wallets
+    await provision_tier1_wallets(user, db)
+    if user.kyc_tier.value in ("TIER_2", "TIER_3"):
+        await provision_tier2_wallets(user, db)
+    return {"status": "wallets_provisioned"}
 
 
 # ── Transactions ──────────────────────────────────────────────────────────────
@@ -328,6 +377,74 @@ async def risk_flags(_: AdminUser):
 
 # ── Settings (platform config overview — no secrets exposed) ──────────────────
 
+# Allowed keys that can be updated via the admin panel (whitelist for safety)
+_UPDATABLE_KEYS = {
+    # Bridge payment rails
+    "BRIDGE_API_KEY", "BRIDGE_API_URL",
+    "BRIDGE_WEBHOOK_SECRET",          # legacy HMAC (unused — kept for compat)
+    "BRIDGE_WEBHOOK_PUBLIC_KEY",      # RSA PEM public key for webhook verification
+    # Dojah KYC
+    "DOJAH_APP_ID", "DOJAH_PUBLIC_KEY", "DOJAH_PRIVATE_KEY", "DOJAH_WEBHOOK_SECRET",
+    # Termii SMS
+    "TERMII_API_KEY", "TERMII_SENDER_ID",
+    # Email
+    "RESEND_API_KEY",
+    "SMTP_PASSWORD", "SMTP_USERNAME", "SMTP_HOST", "FROM_EMAIL",
+    # Monitoring / alerts
+    "SENTRY_DSN",
+    "ADMIN_ALERT_TELEGRAM_BOT_TOKEN", "ADMIN_ALERT_CHAT_ID",
+    # Yellow Card (African fiat ↔ crypto)
+    "YELLOWCARD_API_KEY", "YELLOWCARD_SECRET_KEY",
+    "YELLOWCARD_BASE_URL", "YELLOWCARD_WEBHOOK_SECRET",
+    # Platform
+    "APP_URL", "API_URL", "CORS_ORIGINS",
+}
+
+
+class UpdateKeyRequest(BaseModel):
+    key: str
+    value: str
+
+
+@router.post("/settings/update-key")
+async def update_service_key(data: UpdateKeyRequest, _: AdminUser):
+    """
+    Write a single key=value to the .env file and hot-reload settings.
+    Keys are restricted to a safe whitelist — secrets like JWT_SECRET cannot be changed here.
+    """
+    import os, re, pathlib
+
+    key = data.key.strip().upper()
+    if key not in _UPDATABLE_KEYS:
+        raise HTTPException(400, f"Key '{key}' is not updatable via the admin panel")
+
+    # Find .env file (walk up from app/ to find it)
+    env_path = pathlib.Path(__file__).parent.parent.parent / ".env"
+    if not env_path.exists():
+        raise HTTPException(500, ".env file not found on server")
+
+    content = env_path.read_text()
+    # Escape value for .env (wrap in double quotes if it contains spaces)
+    safe_value = data.value.strip()
+
+    # Replace existing key or append
+    pattern = re.compile(rf"^{re.escape(key)}=.*$", re.MULTILINE)
+    new_line = f"{key}={safe_value}"
+    if pattern.search(content):
+        content = pattern.sub(new_line, content)
+    else:
+        content = content.rstrip("\n") + f"\n{new_line}\n"
+
+    env_path.write_text(content)
+
+    # Hot-reload: update os.environ + bust the pydantic-settings LRU cache
+    os.environ[key] = safe_value
+    from app.config import get_settings
+    get_settings.cache_clear()
+
+    return {"status": "updated", "key": key, "configured": bool(safe_value)}
+
+
 @router.get("/settings")
 async def get_platform_settings(_: AdminUser):
     return {
@@ -351,12 +468,16 @@ async def get_platform_settings(_: AdminUser):
             "smtp_configured": bool(settings.SMTP_PASSWORD),
         },
         "services": {
-            "graph_payment_rails": bool(settings.GRAPH_API_KEY),
+            "bridge_payment_rails": bool(settings.BRIDGE_API_KEY),
             "dojah_kyc": bool(settings.DOJAH_APP_ID and settings.DOJAH_PRIVATE_KEY),
             "termii_sms": bool(settings.TERMII_API_KEY),
             "sentry_monitoring": bool(settings.SENTRY_DSN),
             "telegram_alerts": bool(
                 settings.ADMIN_ALERT_TELEGRAM_BOT_TOKEN and settings.ADMIN_ALERT_CHAT_ID
+            ),
+            "yellowcard": bool(
+                getattr(settings, "YELLOWCARD_API_KEY", "") and
+                getattr(settings, "YELLOWCARD_SECRET_KEY", "")
             ),
         },
         "cors_origins": settings.CORS_ORIGINS,

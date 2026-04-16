@@ -27,10 +27,14 @@ class Settings(BaseSettings):
     # PII encryption — 32-byte key, base64-encoded
     ENCRYPTION_KEY: str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
-    # Graph (payment rails)
-    GRAPH_API_KEY: str = ""
-    GRAPH_API_URL: str = "https://api.graph.finance"
-    GRAPH_WEBHOOK_SECRET: str = ""
+    # Bridge (payment rails — virtual accounts, payouts, FX, cards)
+    BRIDGE_API_KEY: str = ""
+    BRIDGE_API_URL: str = "https://api.sandbox.bridge.xyz"  # use https://api.bridge.xyz for production
+    # Bridge webhook signature uses RSA-256 public key (PEM), not HMAC.
+    # Get your signing public key from: Bridge Dashboard → Developers → Webhooks → Signing Key
+    BRIDGE_WEBHOOK_PUBLIC_KEY: str = ""
+    # Kept for legacy / backward compat — new code uses BRIDGE_WEBHOOK_PUBLIC_KEY
+    BRIDGE_WEBHOOK_SECRET: str = ""
 
     # Dojah (KYC)
     DOJAH_APP_ID: str = ""
@@ -50,12 +54,21 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = ""         # app password from Purelymail
     FROM_EMAIL: str = "noreply@frenzpay.co"
 
+    # Resend (alternative transactional email provider)
+    RESEND_API_KEY: str = ""
+
     # Monitoring
     SENTRY_DSN: str = ""
 
     # Alerts
     ADMIN_ALERT_TELEGRAM_BOT_TOKEN: str = ""
     ADMIN_ALERT_CHAT_ID: str = ""
+
+    # Yellow Card (African fiat ↔ crypto gateway)
+    YELLOWCARD_API_KEY: str = ""
+    YELLOWCARD_SECRET_KEY: str = ""
+    YELLOWCARD_BASE_URL: str = "https://api.yellowcard.io"
+    YELLOWCARD_WEBHOOK_SECRET: str = ""
 
     # OTP
     OTP_TTL_MINUTES: int = 10

@@ -84,6 +84,13 @@ export const api = {
 
   // Settings
   platformSettings: () => req<PlatformSettings>('/api/v1/admin/settings'),
+
+  // Update a single service key (writes to .env + hot-reloads)
+  updateKey: (key: string, value: string) =>
+    req<{ status: string; key: string; configured: boolean }>('/api/v1/admin/settings/update-key', {
+      method: 'POST',
+      body: JSON.stringify({ key, value }),
+    }),
 }
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -217,11 +224,12 @@ export interface PlatformSettings {
     smtp_configured: boolean
   }
   services: {
-    graph_payment_rails: boolean
+    bridge_payment_rails: boolean
     dojah_kyc: boolean
     termii_sms: boolean
     sentry_monitoring: boolean
     telegram_alerts: boolean
+    yellowcard: boolean
   }
   cors_origins: string[]
 }
