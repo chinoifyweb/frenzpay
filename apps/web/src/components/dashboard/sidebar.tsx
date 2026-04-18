@@ -1,12 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import {
   LayoutDashboard,
   Wallet,
   ArrowUpDown,
   ArrowUpRight,
+  ArrowLeftRight,
   Users,
   Settings,
   LogOut,
@@ -37,12 +39,14 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
+import { useMe, formatDisplayName, formatInitials } from '@/hooks/use-me'
 
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   LayoutDashboard,
   Wallet,
   ArrowUpDown,
   ArrowUpRight,
+  ArrowLeftRight,
   Users,
   Settings,
   Send,
@@ -87,6 +91,24 @@ function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function SidebarUserMenu() {
+  const { me, loading } = useMe()
+  const router = useRouter()
+
+  async function logout() {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' })
+      if (!res.ok) throw new Error()
+      router.push('/login')
+      router.refresh()
+    } catch {
+      toast.error('Logout failed')
+    }
+  }
+
+  const displayName = loading ? 'Loading…' : formatDisplayName(me)
+  const initials = formatInitials(me)
+  const email = me?.email ?? ''
+
   return (
     <div className="px-3 pb-4">
       <Separator className="mb-4" />
@@ -96,22 +118,22 @@ function SidebarUserMenu() {
         >
           <Avatar className="size-8">
             <AvatarFallback className="bg-primary/10 text-primary text-xs font-semibold">
-              AJ
+              {initials || '?'}
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="truncate font-medium text-sm">Adekunle Johnson</p>
-            <p className="truncate text-xs text-muted-foreground">adekunle@email.com</p>
+            <p className="truncate font-medium text-sm">{displayName}</p>
+            {email && <p className="truncate text-xs text-muted-foreground">{email}</p>}
           </div>
           <ChevronDown className="size-4 text-muted-foreground shrink-0" />
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="start" sideOffset={8}>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push('/dashboard/settings')}>
             <Settings className="size-4" />
             Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem variant="destructive">
+          <DropdownMenuItem variant="destructive" onClick={logout}>
             <LogOut className="size-4" />
             Log out
           </DropdownMenuItem>

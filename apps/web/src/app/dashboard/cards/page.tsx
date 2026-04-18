@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import {
   AlertCircle,
@@ -9,10 +10,12 @@ import {
   Plus,
   RefreshCw,
   Shield,
+  ShieldCheck,
   Snowflake,
   Trash2,
   Unlock,
 } from 'lucide-react';
+import { useMe } from '@/hooks/use-me';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -84,6 +87,7 @@ function CardVisual({ card }: { card: CardRow }) {
 }
 
 export default function CardsPage() {
+  const { me, loading: meLoading } = useMe();
   const [cards, setCards] = useState<CardRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +182,40 @@ export default function CardsPage() {
       setTerminating(false);
     }
   }, [terminateTarget, terminatePin, fetchCards]);
+
+  // ── KYC gate — cards require T2+ ─────────────────────────────────────
+  const tier = me?.kycTier ?? 'T0';
+  const tierGated = !meLoading && me && tier !== 'T2' && tier !== 'T3';
+
+  if (tierGated) {
+    return (
+      <div className="mx-auto w-full max-w-3xl space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Virtual Cards</h1>
+          <p className="text-sm text-muted-foreground">
+            Issue USD virtual cards for online purchases.
+          </p>
+        </div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <div className="space-y-1 max-w-sm">
+              <h2 className="text-lg font-semibold">Advanced verification required</h2>
+              <p className="text-sm text-muted-foreground">
+                Issuing virtual cards needs <span className="font-medium text-foreground">T2 verification</span>. Takes about 2 minutes &mdash; ID + selfie &mdash; and you&apos;re ready to spend online.
+              </p>
+            </div>
+            <Badge variant="secondary">You&apos;re currently {tier}</Badge>
+            <Button asChild>
+              <Link href="/dashboard/kyc">{tier === 'T0' ? 'Start verification' : 'Upgrade to T2'}</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">

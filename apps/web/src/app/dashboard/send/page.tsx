@@ -2,6 +2,7 @@
 
 
 import { useCallback, useEffect, useState, Suspense } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -14,8 +15,10 @@ import {
   Loader2,
   Send as SendIcon,
   Shield,
+  ShieldCheck,
   User,
 } from 'lucide-react';
+import { useMe } from '@/hooks/use-me';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -99,6 +102,7 @@ function uuidv4(): string {
 function SendPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { me, loading: meLoading } = useMe();
   const initialCurrency = (searchParams.get('currency') as Currency) ?? 'USD';
 
   const [step, setStep] = useState<Step>('recipient');
@@ -217,6 +221,44 @@ function SendPageInner() {
       setSubmitting(false);
     }
   }, [lookup, amountMinor, idempotencyKey, currency, pin, note]);
+
+  // ── KYC gate — sending requires T1+ ──────────────────────────────────
+  const tier = me?.kycTier ?? 'T0';
+  const tierGated = !meLoading && me && tier === 'T0';
+
+  if (tierGated) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-6">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to overview
+        </Button>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Send money</h1>
+          <p className="text-sm text-muted-foreground">
+            Send instantly to any FrenzPay user using their @FrenzTag.
+          </p>
+        </div>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <div className="space-y-1 max-w-sm">
+              <h2 className="text-lg font-semibold">Verify to start sending</h2>
+              <p className="text-sm text-muted-foreground">
+                A quick BVN / NIN check (T1) unlocks instant FrenzTag transfers &mdash; typically under 2 minutes.
+              </p>
+            </div>
+            <Badge variant="secondary">You&apos;re currently {tier}</Badge>
+            <Button asChild>
+              <Link href="/dashboard/kyc">Start verification</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 

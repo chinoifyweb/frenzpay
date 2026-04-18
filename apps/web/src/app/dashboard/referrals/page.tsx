@@ -1,261 +1,143 @@
 'use client'
 
 import { useState } from 'react'
-import {
-  Copy,
-  Users,
-  DollarSign,
-  Gift,
-  Share2,
-  Check,
-} from 'lucide-react'
+import Link from 'next/link'
+import { Check, Copy, Gift, Share2, Users } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Separator } from '@/components/ui/separator'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { formatCurrency, formatDate, cn } from '@/lib/utils'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Skeleton } from '@/components/ui/skeleton'
 import { APP_URL } from '@/lib/constants'
+import { useMe } from '@/hooks/use-me'
 import { toast } from 'sonner'
 
-const REFERRAL_CODE = 'FRZ-ADEK4N'
-const SHARE_LINK = `${APP_URL}/signup?ref=${REFERRAL_CODE}`
-
-const stats = [
-  {
-    label: 'Total Referrals',
-    value: '12',
-    icon: Users,
-    color: 'text-blue-600',
-    bg: 'bg-blue-100 dark:bg-blue-950',
-  },
-  {
-    label: 'Earned',
-    value: '$45.00',
-    icon: DollarSign,
-    color: 'text-emerald-600',
-    bg: 'bg-emerald-100 dark:bg-emerald-950',
-  },
-  {
-    label: 'Pending',
-    value: '$10.00',
-    icon: Gift,
-    color: 'text-amber-600',
-    bg: 'bg-amber-100 dark:bg-amber-950',
-  },
-]
-
-const mockReferrals = [
-  { id: '1', name: 'Ade***le', date: '2026-03-12', status: 'credited' as const, bonus: 5.00 },
-  { id: '2', name: 'Chi***ma', date: '2026-03-10', status: 'credited' as const, bonus: 5.00 },
-  { id: '3', name: 'Ola***de', date: '2026-03-08', status: 'pending' as const, bonus: 5.00 },
-  { id: '4', name: 'Ife***wa', date: '2026-03-05', status: 'credited' as const, bonus: 5.00 },
-  { id: '5', name: 'Kem***ju', date: '2026-03-01', status: 'pending' as const, bonus: 5.00 },
-]
-
-const statusVariant: Record<string, 'default' | 'outline'> = {
-  credited: 'default',
-  pending: 'outline',
-}
-
+/**
+ * Referrals are not live yet — this page previews the flow using the user's
+ * FrenzTag as the referral code so there is no hardcoded mock identity. When
+ * the backend ships, the table + stats will be sourced from /api/referrals.
+ */
 export default function ReferralsPage() {
-  const [copiedCode, setCopiedCode] = useState(false)
-  const [copiedLink, setCopiedLink] = useState(false)
+  const { me, loading } = useMe()
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
 
-  const handleCopyCode = async () => {
-    await navigator.clipboard.writeText(REFERRAL_CODE)
-    setCopiedCode(true)
-    toast.success('Referral code copied to clipboard')
-    setTimeout(() => setCopiedCode(false), 2000)
-  }
+  const tag = me?.frenzTag?.tag ?? ''
+  const code = tag ? `FRZ-${tag.toUpperCase()}` : ''
+  const link = tag ? `${APP_URL}/signup?ref=${code}` : ''
 
-  const handleCopyLink = async () => {
-    await navigator.clipboard.writeText(SHARE_LINK)
-    setCopiedLink(true)
-    toast.success('Referral link copied to clipboard')
-    setTimeout(() => setCopiedLink(false), 2000)
-  }
-
-  const handleShareWhatsApp = () => {
-    const message = encodeURIComponent(
-      `Join Frenz Pay and get paid globally! Sign up with my referral link: ${SHARE_LINK}`
-    )
-    window.open(`https://wa.me/?text=${message}`, '_blank')
-  }
-
-  const handleShareTwitter = () => {
-    const text = encodeURIComponent(
-      `Get paid globally and withdraw in USDT or to your Naira bank account with @FrenzPay! Use my referral link to sign up:`
-    )
-    const url = encodeURIComponent(SHARE_LINK)
-    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank')
+  async function copy(value: string, kind: 'code' | 'link') {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(kind)
+      toast.success(`${kind === 'code' ? 'Code' : 'Link'} copied`)
+      setTimeout(() => setCopied(null), 1500)
+    } catch {
+      toast.error('Copy failed')
+    }
   }
 
   return (
-    <div className="space-y-6">
-      {/* Referral Code & Share Link */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Your Referral Code</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 rounded-lg border bg-muted/50 px-4 py-3">
-                <p className="text-center text-xl font-bold font-mono tracking-widest">
-                  {REFERRAL_CODE}
-                </p>
-              </div>
-              <Button variant="outline" size="icon" onClick={handleCopyCode}>
-                {copiedCode ? (
-                  <Check className="size-4 text-emerald-600" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Share this code with friends. You both earn $5 when they complete
-              their first transaction.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Share Link</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="flex-1 rounded-lg border bg-muted/50 px-4 py-3 overflow-hidden">
-                <p className="text-sm font-mono text-muted-foreground truncate">
-                  {SHARE_LINK}
-                </p>
-              </div>
-              <Button variant="outline" size="icon" onClick={handleCopyLink}>
-                {copiedLink ? (
-                  <Check className="size-4 text-emerald-600" />
-                ) : (
-                  <Copy className="size-4" />
-                )}
-              </Button>
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Share via</p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={handleShareWhatsApp}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="size-4 mr-1.5 fill-current"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
-                  </svg>
-                  WhatsApp
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={handleShareTwitter}
-                >
-                  <svg
-                    viewBox="0 0 24 24"
-                    className="size-4 mr-1.5 fill-current"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                  </svg>
-                  Twitter/X
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={handleCopyLink}
-                >
-                  <Share2 className="size-4 mr-1.5" />
-                  Copy Link
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Refer &amp; earn</h1>
+        <p className="text-sm text-muted-foreground">
+          Invite friends to FrenzPay. Earn when they verify and transact.
+        </p>
       </div>
 
-      {/* Stats Cards */}
+      <Alert>
+        <Gift className="h-4 w-4" />
+        <AlertDescription>
+          Referrals launch soon. Your code is reserved &mdash; share it now, rewards backfill when the programme goes live.
+        </AlertDescription>
+      </Alert>
+
+      {/* Referral code card */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Share2 className="h-4 w-4" />
+            Your referral code
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading ? (
+            <>
+              <Skeleton className="h-10 w-40" />
+              <Skeleton className="h-10 w-full" />
+            </>
+          ) : !tag ? (
+            <Alert>
+              <AlertDescription className="flex items-center justify-between gap-2">
+                <span>Set up your FrenzTag first to unlock a referral code.</span>
+                <Button size="sm" asChild variant="outline">
+                  <Link href="/dashboard/settings">Set FrenzTag</Link>
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="font-mono text-2xl font-semibold tracking-wider">{code}</p>
+                <Button size="sm" variant="outline" onClick={() => copy(code, 'code')}>
+                  {copied === 'code' ? <Check className="mr-1.5 h-3.5 w-3.5 text-emerald-600" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
+                  Copy code
+                </Button>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <p className="min-w-0 flex-1 truncate rounded-md border bg-background px-3 py-2 font-mono text-xs">{link}</p>
+                <Button size="sm" onClick={() => copy(link, 'link')}>
+                  {copied === 'link' ? <Check className="mr-1.5 h-3.5 w-3.5" /> : <Share2 className="mr-1.5 h-3.5 w-3.5" />}
+                  Copy link
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Stats — placeholders until backend is wired */}
       <div className="grid gap-4 sm:grid-cols-3">
-        {stats.map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="flex items-center gap-4 py-5">
-              <div
-                className={cn(
-                  'flex size-12 items-center justify-center rounded-full shrink-0',
-                  stat.bg
-                )}
-              >
-                <stat.icon className={cn('size-6', stat.color)} />
+        {[
+          { label: 'Referrals', value: '0', Icon: Users, tone: 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-400' },
+          { label: 'Earned', value: '$0.00', Icon: Gift, tone: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400' },
+          { label: 'Pending', value: '$0.00', Icon: Gift, tone: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400' },
+        ].map(({ label, value, Icon, tone }) => (
+          <Card key={label}>
+            <CardContent className="flex items-center gap-3 p-5">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${tone}`}>
+                <Icon className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{stat.value}</p>
-                <p className="text-sm text-muted-foreground">{stat.label}</p>
+                <p className="text-xs uppercase text-muted-foreground">{label}</p>
+                <p className="text-lg font-semibold">{value}</p>
               </div>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      {/* Referral History */}
+      {/* How it will work */}
       <Card>
         <CardHeader>
-          <CardTitle>Referral History</CardTitle>
+          <CardTitle className="text-base">How it will work</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Bonus</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {mockReferrals.map((referral) => (
-                  <TableRow key={referral.id}>
-                    <TableCell className="font-medium">{referral.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDate(referral.date)}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariant[referral.status]}>
-                        {referral.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-medium text-emerald-600">
-                      {formatCurrency(referral.bonus, 'USD')}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+        <CardContent>
+          <ol className="space-y-3 text-sm">
+            <li className="flex items-start gap-3">
+              <Badge variant="secondary" className="mt-0.5">1</Badge>
+              <span>Share your code with a friend.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Badge variant="secondary" className="mt-0.5">2</Badge>
+              <span>They sign up, verify KYC, and complete their first transaction.</span>
+            </li>
+            <li className="flex items-start gap-3">
+              <Badge variant="secondary" className="mt-0.5">3</Badge>
+              <span>You both get a bonus credited to your USD balance.</span>
+            </li>
+          </ol>
         </CardContent>
       </Card>
     </div>

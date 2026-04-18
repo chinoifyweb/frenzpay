@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -13,7 +14,9 @@ import {
   Landmark,
   Loader2,
   Shield,
+  ShieldCheck,
 } from 'lucide-react';
+import { useMe } from '@/hooks/use-me';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -106,6 +109,7 @@ function uuidv4(): string {
 
 export default function WithdrawPage() {
   const router = useRouter();
+  const { me, loading: meLoading } = useMe();
 
   const [step, setStep] = useState<Step>('destination');
 
@@ -253,6 +257,46 @@ export default function WithdrawPage() {
   }, [resolution, amountMinor, idempotencyKey, sourceCurrency, bankCode, accountNumber, pin]);
 
   const bankName = banks.find((b) => b.code === bankCode)?.name ?? '';
+
+  // ── KYC gate: withdrawals require T2+ ────────────────────────────────────
+  const tier = me?.kycTier ?? 'T0';
+  const tierGated = !meLoading && me && (tier === 'T0' || tier === 'T1');
+
+  if (tierGated) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-6">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to overview
+        </Button>
+
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Withdraw to Nigerian bank</h1>
+          <p className="text-sm text-muted-foreground">
+            Convert USD to NGN and send to any Nigerian bank account.
+          </p>
+        </div>
+
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <div className="space-y-1 max-w-sm">
+              <h2 className="text-lg font-semibold">Advanced verification required</h2>
+              <p className="text-sm text-muted-foreground">
+                Bank withdrawals need <span className="font-medium text-foreground">T2 verification</span> so we can keep your money safe. It takes a couple of minutes — upload an ID + a selfie and you&apos;re set.
+              </p>
+            </div>
+            <Badge variant="secondary">You&apos;re currently {tier}</Badge>
+            <Button asChild>
+              <Link href="/dashboard/kyc">{tier === 'T0' ? 'Start verification' : 'Upgrade to T2'}</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-6">

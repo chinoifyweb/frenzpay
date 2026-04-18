@@ -1,255 +1,341 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import {
-  ArrowUpRight,
-  Share2,
-  UserPlus,
-  ArrowDownLeft,
-  ArrowUpRight as ArrowUpRightIcon,
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Copy,
-  CheckCircle2,
-} from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import type { Wallet, Transaction } from '@/types'
-import { formatCurrency, formatDateTime, getCurrencyFlag } from '@/lib/utils'
 import { toast } from 'sonner'
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ArrowLeftRight,
+  CreditCard,
+  PiggyBank,
+  Send,
+  ShieldCheck,
+  Sparkles,
+  Wallet as WalletIcon,
+} from 'lucide-react'
 
-const mockUser = {
-  full_name: 'Adekunle Johnson',
-  kyc_status: 'verified' as const,
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
+import { useMe, formatDisplayName } from '@/hooks/use-me'
+
+type Currency = 'USD' | 'NGN' | 'USDC'
+
+interface AccountsResponse {
+  accounts: Array<{ id: string; currency: Currency; subtype: string; balance: string }>
+  available: Partial<Record<Currency, string>>
 }
 
-const mockWallets: Wallet[] = [
-  { id: '1', user_id: '1', currency: 'USD', balance: 5420.50, available_balance: 5420.50, ledger_balance: 5420.50, is_active: true, created_at: '2026-01-15', updated_at: '2026-03-14' },
-  { id: '2', user_id: '1', currency: 'GBP', balance: 1230.75, available_balance: 1230.75, ledger_balance: 1230.75, is_active: true, created_at: '2026-01-15', updated_at: '2026-03-14' },
-  { id: '3', user_id: '1', currency: 'EUR', balance: 890.00, available_balance: 890.00, ledger_balance: 890.00, is_active: true, created_at: '2026-01-15', updated_at: '2026-03-14' },
-]
-
-const mockTransactions: Transaction[] = [
-  { id: '1', user_id: '1', wallet_id: '1', type: 'credit', amount: 2500.00, currency: 'USD', fee: 0, net_amount: 2500.00, description: 'Payment from Upwork', reference: 'TXN001', sender_name: 'Upwork Inc.', sender_bank: 'Wells Fargo', status: 'completed', provider_reference: null, metadata: null, created_at: '2026-03-13T14:30:00Z' },
-  { id: '2', user_id: '1', wallet_id: '1', type: 'debit', amount: 1000.00, currency: 'USD', fee: 15.00, net_amount: 985.00, description: 'USDT Withdrawal', reference: 'WDR001', sender_name: null, sender_bank: null, status: 'completed', provider_reference: null, metadata: null, created_at: '2026-03-12T10:15:00Z' },
-  { id: '3', user_id: '1', wallet_id: '2', type: 'credit', amount: 750.00, currency: 'GBP', fee: 0, net_amount: 750.00, description: 'Payment from Client - Website Project', reference: 'TXN002', sender_name: 'John Smith', sender_bank: 'Barclays', status: 'completed', provider_reference: null, metadata: null, created_at: '2026-03-11T09:00:00Z' },
-  { id: '4', user_id: '1', wallet_id: '3', type: 'credit', amount: 890.00, currency: 'EUR', fee: 0, net_amount: 890.00, description: 'Freelance payment - Design work', reference: 'TXN003', sender_name: 'Design GmbH', sender_bank: 'Deutsche Bank', status: 'pending', provider_reference: null, metadata: null, created_at: '2026-03-10T16:45:00Z' },
-  { id: '5', user_id: '1', wallet_id: '1', type: 'credit', amount: 3200.00, currency: 'USD', fee: 0, net_amount: 3200.00, description: 'Monthly salary - Remote Corp', reference: 'TXN004', sender_name: 'Remote Corp LLC', sender_bank: 'Chase', status: 'completed', provider_reference: null, metadata: null, created_at: '2026-03-01T12:00:00Z' },
-]
-
-const currencyColors: Record<string, string> = {
-  USD: 'border-t-blue-500',
-  GBP: 'border-t-purple-500',
-  EUR: 'border-t-emerald-500',
+interface TxRow {
+  id: string
+  type: string
+  status: string
+  amount: string
+  currency: string
+  direction: 'in' | 'out' | 'internal'
+  createdAt: string
+  postedAt: string | null
 }
 
-const statusVariant: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  completed: 'default',
-  pending: 'outline',
-  failed: 'destructive',
+const DECIMALS: Record<Currency, number> = { USD: 2, NGN: 2, USDC: 6 }
+const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '\u20A6', USDC: '' }
+const CURRENCY_GRADIENT: Record<Currency, string> = {
+  USD: 'from-emerald-500/10 via-emerald-500/5 to-transparent',
+  NGN: 'from-sky-500/10 via-sky-500/5 to-transparent',
+  USDC: 'from-indigo-500/10 via-indigo-500/5 to-transparent',
 }
 
-export default function DashboardPage() {
-  const [showBalances, setShowBalances] = useState(true)
+function formatMinor(amount: string, currency: Currency): string {
+  const raw = (amount ?? '0').replace(/[^0-9]/g, '') || '0'
+  const decimals = DECIMALS[currency]
+  const padded = raw.padStart(decimals + 1, '0')
+  const whole = padded.slice(0, padded.length - decimals)
+  let fraction = padded.slice(padded.length - decimals)
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  if (currency === 'USDC') {
+    fraction = fraction.replace(/0+$/, '')
+    if (fraction.length < 2) fraction = fraction.padEnd(2, '0')
+    return `${grouped}.${fraction} USDC`
+  }
+  return `${SYMBOL[currency]}${grouped}.${fraction}`
+}
+
+const KYC_TIERS = ['T0', 'T1', 'T2', 'T3'] as const
+const KYC_LABEL = { T0: 'Basic', T1: 'Verified', T2: 'Advanced', T3: 'Premium' } as const
+
+export default function DashboardOverview() {
+  const { me, loading: meLoading } = useMe()
+
+  const [accounts, setAccounts] = useState<AccountsResponse | null>(null)
+  const [accountsLoading, setAccountsLoading] = useState(true)
+  const [recent, setRecent] = useState<TxRow[]>([])
+  const [recentLoading, setRecentLoading] = useState(true)
+  const [provisioning, setProvisioning] = useState(false)
+
+  const fetchAccounts = useCallback(async () => {
+    setAccountsLoading(true)
+    try {
+      const res = await fetch('/api/accounts', { cache: 'no-store' })
+      if (res.ok) setAccounts(await res.json())
+    } finally { setAccountsLoading(false) }
+  }, [])
+
+  const fetchRecent = useCallback(async () => {
+    setRecentLoading(true)
+    try {
+      const res = await fetch('/api/transactions?limit=5', { cache: 'no-store' })
+      if (res.ok) {
+        const json = await res.json()
+        setRecent(json.transactions ?? [])
+      }
+    } finally { setRecentLoading(false) }
+  }, [])
+
+  useEffect(() => { void fetchAccounts(); void fetchRecent() }, [fetchAccounts, fetchRecent])
+
+  async function activateWallet() {
+    setProvisioning(true)
+    try {
+      const res = await fetch('/api/accounts/provision', { method: 'POST' })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Failed')
+      toast.success('Wallet activated')
+      await fetchAccounts()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to activate')
+    } finally { setProvisioning(false) }
+  }
+
+  const displayName = formatDisplayName(me)
+  const firstName = me?.firstName || displayName.split(' ')[0] || 'there'
+  const greeting = getGreeting()
+
+  const kycTier = me?.kycTier ?? 'T0'
+  const tierIndex = KYC_TIERS.indexOf(kycTier)
+  const kycProgress = ((tierIndex + 1) / KYC_TIERS.length) * 100
+
+  const hasAccounts = (accounts?.accounts.length ?? 0) > 0
+  const currencies: Currency[] = ['USD', 'NGN', 'USDC']
 
   return (
-    <div className="space-y-6">
-      {/* KYC Banner - shown if not verified */}
-      {mockUser.kyc_status !== 'verified' && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950/50">
-          <AlertCircle className="size-5 text-amber-600 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
-              Complete your KYC verification
-            </p>
-            <p className="text-xs text-amber-600 dark:text-amber-400">
-              Verify your identity to unlock withdrawals and higher limits.
-            </p>
-          </div>
-          <Link href="/dashboard/settings">
-            <Button size="sm">Verify Now</Button>
-          </Link>
-        </div>
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* Greeting */}
+      <div>
+        <p className="text-sm text-muted-foreground">{greeting}</p>
+        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+          {meLoading ? <Skeleton className="h-8 w-48" /> : `Hi, ${firstName} 👋`}
+        </h1>
+      </div>
+
+      {/* KYC banner — hidden at T3 */}
+      {me && kycTier !== 'T3' && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-3 flex-1">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium">
+                    {kycTier === 'T0' ? 'Verify your identity to start using FrenzPay' : `You\u2019re ${KYC_LABEL[kycTier]} verified`}
+                  </p>
+                  <Badge variant="secondary" className="text-[10px]">{kycTier}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {kycTier === 'T0'
+                    ? 'Complete KYC to receive, send, save, and withdraw.'
+                    : `Upgrade to ${KYC_LABEL[KYC_TIERS[tierIndex + 1]!]} for higher limits.`}
+                </p>
+                <div className="mt-3 max-w-sm">
+                  <Progress value={kycProgress} className="h-1.5" />
+                </div>
+              </div>
+            </div>
+            <Button asChild>
+              <Link href="/dashboard/kyc">{kycTier === 'T0' ? 'Start KYC' : 'Continue'}</Link>
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Welcome Banner */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-2xl font-bold tracking-tight">
-            Welcome back, {mockUser.full_name.split(' ')[0]}!
-          </h2>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-sm text-muted-foreground">Here is your account overview</p>
-            <Badge
-              variant={mockUser.kyc_status === 'verified' ? 'default' : 'outline'}
-              className="text-[10px]"
-            >
-              <CheckCircle2 className="size-3 mr-0.5" />
-              {mockUser.kyc_status === 'verified' ? 'KYC Verified' : 'Unverified'}
-            </Badge>
-          </div>
+      {/* Balances */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Balances</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/dashboard/wallet">View all</Link>
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowBalances(!showBalances)}
-        >
-          {showBalances ? <EyeOff className="size-4 mr-1.5" /> : <Eye className="size-4 mr-1.5" />}
-          {showBalances ? 'Hide balances' : 'Show balances'}
-        </Button>
-      </div>
 
-      {/* Balance Cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {mockWallets.map((wallet) => (
-          <Card key={wallet.id} className={`border-t-4 ${currencyColors[wallet.currency]}`}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl">{getCurrencyFlag(wallet.currency)}</span>
-                  <span className="text-sm font-medium text-muted-foreground">
-                    {wallet.currency} Account
-                  </span>
-                </div>
-                <Badge variant="secondary" className="text-[10px]">Active</Badge>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1">
-                <p className="text-3xl font-bold tracking-tight">
-                  {showBalances ? formatCurrency(wallet.balance, wallet.currency) : '****'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Available: {showBalances ? formatCurrency(wallet.available_balance, wallet.currency) : '****'}
-                </p>
-              </div>
-              <Link href="/dashboard/accounts" className="mt-4 block">
-                <Button variant="outline" size="sm" className="w-full">
-                  View Account
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Quick Actions */}
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Link href="/dashboard/withdraw">
-          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-            <CardContent className="flex items-center gap-3 py-1">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-primary/10">
-                <ArrowUpRight className="size-5 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Withdraw to USDT</p>
-                <p className="text-xs text-muted-foreground">Convert and withdraw</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/dashboard/accounts">
-          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-            <CardContent className="flex items-center gap-3 py-1">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-emerald-500/10">
-                <Share2 className="size-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Share Account Details</p>
-                <p className="text-xs text-muted-foreground">Send to your clients</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-        <Link href="/dashboard/referrals">
-          <Card className="cursor-pointer transition-shadow hover:shadow-md">
-            <CardContent className="flex items-center gap-3 py-1">
-              <div className="flex size-10 items-center justify-center rounded-lg bg-purple-500/10">
-                <UserPlus className="size-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Invite Friends</p>
-                <p className="text-xs text-muted-foreground">Earn $5 per referral</p>
-              </div>
-            </CardContent>
-          </Card>
-        </Link>
-      </div>
-
-      {/* Recent Transactions */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Recent Transactions</CardTitle>
-            <Link href="/dashboard/transactions">
-              <Button variant="ghost" size="sm">View all</Button>
-            </Link>
+        {accountsLoading ? (
+          <div className="grid gap-3 md:grid-cols-3">
+            {[0,1,2].map(i => <Skeleton key={i} className="h-28 w-full" />)}
           </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Description</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mockTransactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDateTime(tx.created_at)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className={`flex size-7 items-center justify-center rounded-full ${
-                        tx.type === 'credit' ? 'bg-emerald-100 dark:bg-emerald-950' : 'bg-red-100 dark:bg-red-950'
-                      }`}>
-                        {tx.type === 'credit' ? (
-                          <ArrowDownLeft className="size-3.5 text-emerald-600" />
-                        ) : (
-                          <ArrowUpRightIcon className="size-3.5 text-red-600" />
-                        )}
+        ) : !hasAccounts ? (
+          <Card className="border-dashed">
+            <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <WalletIcon className="h-6 w-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="font-semibold">Activate your wallet</p>
+                <p className="max-w-md text-sm text-muted-foreground">
+                  Set up USD, NGN, and USDC accounts to start receiving, sending, and saving.
+                </p>
+              </div>
+              {kycTier === 'T0' ? (
+                <Button asChild><Link href="/dashboard/kyc">Complete KYC first</Link></Button>
+              ) : (
+                <Button onClick={activateWallet} disabled={provisioning}>
+                  {provisioning ? 'Activating...' : 'Activate wallet'}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-3">
+            {currencies.map(c => (
+              <Card key={c} className={`overflow-hidden bg-gradient-to-br ${CURRENCY_GRADIENT[c]}`}>
+                <CardContent className="p-5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                      {c === 'USD' ? 'US Dollars' : c === 'NGN' ? 'Nigerian Naira' : 'USD Coin'}
+                    </span>
+                    <Badge variant="secondary" className="font-mono text-[10px]">{c}</Badge>
+                  </div>
+                  <p className="mt-2 break-all text-2xl font-semibold tracking-tight">
+                    {formatMinor(accounts!.available[c] ?? '0', c)}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Quick actions */}
+      <div>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Quick actions</h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <QuickAction icon={ArrowDownLeft} label="Receive"       sub="USD / Naira in"        href="/dashboard/wallet/receive?currency=USD" tone="emerald" />
+          <QuickAction icon={Send}          label="Send"          sub="FrenzTag in seconds"   href="/dashboard/send"                         tone="sky" />
+          <QuickAction icon={ArrowUpRight}  label="Withdraw"      sub="To any Naira bank"     href="/dashboard/withdraw"                     tone="red" />
+          <QuickAction icon={ArrowLeftRight} label="Convert"       sub="USD \u21c4 NGN \u21c4 USDC" href="/dashboard/convert"                 tone="purple" />
+          <QuickAction icon={PiggyBank}     label="Save"          sub="Flex, Target & Fixed"  href="/dashboard/savings"                      tone="pink" />
+          <QuickAction icon={CreditCard}    label="Cards"         sub="Virtual USD cards"     href="/dashboard/cards"                        tone="indigo" />
+          <QuickAction icon={ShieldCheck}   label="KYC"           sub={`Tier ${kycTier}`}     href="/dashboard/kyc"                          tone="amber" />
+          <QuickAction icon={Sparkles}      label="Refer a friend" sub="Share & earn"          href="/dashboard/referrals"                    tone="fuchsia" />
+        </div>
+      </div>
+
+      {/* Recent activity */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Recent activity</h2>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/dashboard/activity">View all</Link>
+          </Button>
+        </div>
+
+        <Card>
+          <CardContent className="p-0">
+            {recentLoading ? (
+              <div className="p-5 space-y-3">{[0,1,2].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
+            ) : recent.length === 0 ? (
+              <div className="flex flex-col items-center gap-2 py-10 text-center">
+                <p className="text-sm font-medium">No transactions yet</p>
+                <p className="text-xs text-muted-foreground">Once money starts moving, it shows up here.</p>
+              </div>
+            ) : (
+              <div className="divide-y">
+                {recent.map(tx => (
+                  <Link
+                    key={tx.id}
+                    href="/dashboard/activity"
+                    className="flex items-center justify-between gap-3 p-4 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full ' +
+                        (tx.direction === 'in' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                        : tx.direction === 'out' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                        : 'bg-muted text-muted-foreground')
+                      }>
+                        {tx.direction === 'in' ? <ArrowDownLeft className="h-4 w-4" />
+                         : tx.direction === 'out' ? <ArrowUpRight className="h-4 w-4" />
+                         : <ArrowLeftRight className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">{tx.description}</p>
-                        {tx.sender_name && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            from {tx.sender_name}
-                          </p>
-                        )}
+                        <p className="truncate text-sm font-medium capitalize">
+                          {tx.type.toLowerCase().replace(/_/g, ' ')}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {new Date(tx.postedAt ?? tx.createdAt).toLocaleString()}
+                        </p>
                       </div>
                     </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <span className={tx.type === 'credit' ? 'text-emerald-600 font-medium' : 'text-red-600 font-medium'}>
-                      {tx.type === 'credit' ? '+' : '-'}{formatCurrency(tx.amount, tx.currency)}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant={statusVariant[tx.status] || 'secondary'}>
-                      {tx.status}
-                    </Badge>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    <p className={
+                      'font-mono text-sm font-medium whitespace-nowrap ' +
+                      (tx.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400'
+                      : tx.direction === 'out' ? 'text-red-600 dark:text-red-400'
+                      : '')
+                    }>
+                      {tx.direction === 'in' ? '+' : tx.direction === 'out' ? '-' : ''}
+                      {formatMinor(tx.amount, (tx.currency as Currency) ?? 'USD')}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  )
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+const TONES: Record<string, string> = {
+  emerald: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 group-hover:bg-emerald-500/20',
+  sky:     'bg-sky-500/10 text-sky-700 dark:text-sky-400 group-hover:bg-sky-500/20',
+  red:     'bg-red-500/10 text-red-700 dark:text-red-400 group-hover:bg-red-500/20',
+  purple:  'bg-purple-500/10 text-purple-700 dark:text-purple-400 group-hover:bg-purple-500/20',
+  pink:    'bg-pink-500/10 text-pink-700 dark:text-pink-400 group-hover:bg-pink-500/20',
+  indigo:  'bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 group-hover:bg-indigo-500/20',
+  amber:   'bg-amber-500/10 text-amber-700 dark:text-amber-400 group-hover:bg-amber-500/20',
+  fuchsia: 'bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-400 group-hover:bg-fuchsia-500/20',
+}
+
+function QuickAction({
+  icon: Icon, label, sub, href, tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  label: string
+  sub: string
+  href: string
+  tone: string
+}) {
+  return (
+    <Link href={href} className="group">
+      <Card className="h-full transition-all hover:border-primary/40 hover:shadow-sm">
+        <CardContent className="p-4">
+          <div className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${TONES[tone]}`}>
+            <Icon className="h-4 w-4" />
+          </div>
+          <p className="text-sm font-semibold">{label}</p>
+          <p className="text-xs text-muted-foreground">{sub}</p>
         </CardContent>
       </Card>
-    </div>
+    </Link>
   )
 }

@@ -29,7 +29,7 @@ export interface RiskAssessment {
 
 export interface AssessRiskInput {
   userId: string;
-  action: 'p2p_send' | 'withdraw' | 'card_issue';
+  action: 'p2p_send' | 'withdraw' | 'card_issue' | 'convert';
   amountMinor: bigint;
   currency: string;
   counterpartyUserId?: string;
