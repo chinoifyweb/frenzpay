@@ -2,7 +2,7 @@
   "name": "frenzpay",
   "private": true,
   "version": "0.1.0",
-  "description": "FrenzPay \u00e2\u20ac\u201d cross-border payments for the African diaspora",
+  "description": "FrenzPay â€” cross-border payments for the African diaspora",
   "scripts": {
     "build": "pnpm -r build",
     "dev": "pnpm --filter @frenzpay/web dev",
@@ -39,6 +39,19 @@
   "lint-staged": {
     "*.{ts,tsx,js,jsx,json,css}": [
       "biome check --write --no-errors-on-unmatched"
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@biomejs/biome",
+      "@prisma/client",
+      "@prisma/engines",
+      "argon2",
+      "esbuild",
+      "msgpackr-extract",
+      "prisma",
+      "sharp",
+      "@node-rs/argon2"
     ]
   }
 }
