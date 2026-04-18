@@ -1,0 +1,107 @@
+name: Deploy FrenzPay
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: "Run prisma migrate deploy on the server?"
+        required: false
+        default: "false"
+        type: choice
+        options: ["false", "true"]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false # never cancel an in-flight deploy
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10"
+
+jobs:
+  deploy:
+    name: Build & deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 1 }
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 10 }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test:unit
+
+      - name: Generate Prisma client
+        run: pnpm --filter @frenzpay/db prisma generate
+
+      - name: Build
+        run: pnpm --filter @frenzpay/web build
+
+      - name: Package release
+        run: |
+          # Fold static + public into standalone output so one tar has everything PM2 needs.
+          mkdir -p apps/web/.next/standalone/apps/web/.next
+          cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
+          [ -d apps/web/public ] && cp -r apps/web/public apps/web/.next/standalone/apps/web/public || true
+          cp -r packages/db/prisma apps/web/.next/standalone/apps/web/prisma || true
+
+          tar -czf frenzpay-release.tar.gz \
+            apps/web/.next/standalone \
+            apps/web/.next/static \
+            apps/web/public \
+            packages/db/prisma \
+            ecosystem.config.js \
+            scripts
+          ls -lh frenzpay-release.tar.gz
+
+      - name: Ship tarball to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: frenzpay-release.tar.gz
+          target: /tmp
+
+      - name: Ship scripts + ecosystem
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "scripts/*.sh,ecosystem.config.js"
+          target: /home/frenzpay
+          overwrite: true
+          strip_components: 0
+
+      - name: Execute deploy
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          RUN_MIGRATIONS: ${{ github.event.inputs.run_migrations || 'false' }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: RUN_MIGRATIONS
+          script: |
+            chmod +x /home/frenzpay/scripts/*.sh
+            if [ "$RUN_MIGRATIONS" = "true" ]; then export FRENZPAY_RUN_MIGRATIONS=1; fi
+            bash /home/frenzpay/scripts/deploy.sh
+
+      - name: Notify failure
+        if: failure()
+        run: echo "::error::FrenzPay deploy failed on ${{ github.sha }}"
