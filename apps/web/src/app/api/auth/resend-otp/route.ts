@@ -17,6 +17,7 @@ import { decryptField } from '@frenzpay/crypto';
 import { redis } from '@/lib/redis';
 import { logger } from '@frenzpay/logger';
 import type { CipherPayload } from '@frenzpay/crypto';
+import { sendEmailVerificationOtp } from '@/lib/email';
 
 const Schema = z.object({
   userId: z.string().uuid(),
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, phone: true, emailVerified: true, phoneVerified: true },
+    select: { id: true, email: true, firstName: true, phone: true, emailVerified: true, phoneVerified: true },
   });
 
   if (!user) {
@@ -81,8 +82,16 @@ export async function POST(request: NextRequest) {
       data: { userId, tokenHash: otpHash, expiresAt },
     });
 
-    // TODO(phase-7): send email OTP
-    logger.info({ userId }, 'resend: email OTP created');
+    // Send via Resend. Fire-and-forget; if this fails the user can retry.
+    try {
+      await sendEmailVerificationOtp(user.email, user.firstName ?? '', otp);
+      logger.info({ userId }, 'resend: email OTP sent');
+    } catch (err) {
+      logger.error(
+        { userId, err: err instanceof Error ? err.message : err },
+        'resend: email OTP failed to send',
+      );
+    }
   } else {
     // Decrypt phone to get E.164 number for SMS
     let phoneNumber = 'unknown';

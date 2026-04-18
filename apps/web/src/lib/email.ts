@@ -95,6 +95,36 @@ export async function sendAdminWithdrawalNotification(userName: string, amount: 
 
 // ─── User Emails ──────────────────────────────────────
 
+/**
+ * One-time code for email verification (sent during signup + resend).
+ * OTP is a 6-digit numeric code; the DB stores only the hash.
+ */
+export async function sendEmailVerificationOtp(email: string, name: string, otp: string) {
+  return resend.emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    subject: `Your Frenz Pay verification code: ${otp}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Verify your email</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name || 'there'},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Thanks for signing up. Enter the 6-digit code below to verify your email address and activate your Frenz Pay account.</p>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+          <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase;">Verification code</p>
+          <p style="margin: 0; color: #111; font-size: 32px; font-weight: 700; letter-spacing: 0.4em; font-family: 'SF Mono', Menlo, Consolas, monospace;">${otp}</p>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">This code expires in 10 minutes. If you didn&apos;t sign up for Frenz Pay, you can safely ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
+      </div>
+    `,
+    text: `Your Frenz Pay verification code: ${otp}\n\nThis code expires in 10 minutes. If you didn't sign up for Frenz Pay, you can ignore this email.`,
+  })
+}
+
 export async function sendWelcomeEmail(email: string, name: string) {
   return resend.emails.send({
     from: FROM_HELLO,

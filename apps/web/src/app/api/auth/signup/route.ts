@@ -22,6 +22,7 @@ import { encryptField, blindIndex } from '@frenzpay/crypto';
 import { checkAuthRateLimit, rateLimitHeaders } from '@frenzpay/auth/rate-limit';
 import { redis } from '@/lib/redis';
 import { logger } from '@frenzpay/logger';
+import { sendEmailVerificationOtp } from '@/lib/email';
 
 // ─── Validation schema ────────────────────────────────────────────────────────
 
@@ -203,7 +204,18 @@ export async function POST(request: NextRequest) {
 
   logger.info({ userId, email }, 'signup: user created');
 
-  // TODO(phase-7): send email OTP via Resend, phone OTP via Termii/Africa's Talking
+  // Send email OTP via Resend. Fire-and-forget but log failures so the user
+  // can always fall back to the /resend-otp endpoint. Phone OTP (Termii/AT)
+  // still lives under TODO(phase-7) — SMS provider not wired yet.
+  try {
+    await sendEmailVerificationOtp(email, firstName, emailOtp);
+    logger.info({ userId, email }, 'signup: verification email sent');
+  } catch (err) {
+    logger.error(
+      { userId, email, err: err instanceof Error ? err.message : err },
+      'signup: verification email failed to send — user can click resend',
+    );
+  }
 
   const response: Record<string, unknown> = {
     userId,
