@@ -18,12 +18,12 @@ Cloudflare  (DNS + WAF + CDN, proxied)
 Hetzner 16 GB   (Ubuntu 24.04 + CyberPanel)
   │
   ├─ OpenLiteSpeed (CyberPanel vhosts)
-  │   ├─ app.frenzpay.co   → proxy to 127.0.0.1:3000 (new FrenzPay — PM2 cluster)
+  │   ├─ app.frenzpay.co   → proxy to 127.0.0.1:3200 (new FrenzPay — PM2 cluster)
   │   ├─ frenzpay.co       → legacy FrenzPay deploy (kept during cutover)
   │   └─ (other Frenz sites unchanged)
   │
   ├─ PM2  (running as frenzpay user)
-  │   ├─ frenzpay-web     — Next.js standalone, 2 cluster workers, port 3000
+  │   ├─ frenzpay-web     — Next.js standalone, 2 cluster workers, port 3200
   │   └─ frenzpay-worker  — node-cron scheduled jobs
   │
   ├─ PostgreSQL   localhost:5432   (database: frenzpay_v3, user: frenzpay_app)
@@ -218,7 +218,7 @@ reload one at a time.
 
 4. **Check health endpoint from inside**
    ```
-   curl http://127.0.0.1:3000/api/health
+   curl http://127.0.0.1:3200/api/health
    ```
    If 200 from localhost but failing externally → OLS or Cloudflare.
    If 503 from localhost → check DB/Redis. `/api/health` returns the specific failing dependency in the `checks` object.

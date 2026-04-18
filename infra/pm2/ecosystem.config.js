@@ -45,7 +45,7 @@ module.exports = {
       node_args: '--enable-source-maps',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3200,     // 3000 is claimed by nghttpx (CyberPanel HTTP/2 proxy)
         HOSTNAME: '127.0.0.1',
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',

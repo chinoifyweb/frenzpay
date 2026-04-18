@@ -27,7 +27,7 @@ pm2 save >/dev/null
 
 log "waiting for health"
 for i in 1 2 3 4 5; do
-  if curl -fsS --max-time 5 http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+  if curl -fsS --max-time 5 http://127.0.0.1:3200/api/health >/dev/null 2>&1; then
     log "health ok — rolled back to $PREVIOUS"
     exit 0
   fi

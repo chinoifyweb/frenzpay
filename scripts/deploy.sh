@@ -68,7 +68,7 @@ pm2 reload "$APP_DIR/ecosystem.config.js" --update-env
 pm2 save >/dev/null
 
 log "waiting for health"
-HEALTH_URL="http://127.0.0.1:3000/api/health"
+HEALTH_URL="http://127.0.0.1:3200/api/health"
 for i in 1 2 3 4 5 6 7 8 9 10; do
   if curl -fsS --max-time 5 "$HEALTH_URL" >/dev/null 2>&1; then
     log "health ok"
