@@ -17,7 +17,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp
 
 // ─── Step definitions ─────────────────────────────────────────────────────────
 
-type Step = 'form' | 'verify_email' | 'verify_phone' | 'done'
+type Step = 'form' | 'verify_email'
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -84,7 +84,6 @@ export default function SignupPage() {
   const [step, setStep] = useState<Step>('form')
   const [userId, setUserId] = useState<string>('')
   const [emailOtp, setEmailOtp] = useState('')
-  const [phoneOtp, setPhoneOtp] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isResending, setIsResending] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -162,41 +161,8 @@ export default function SignupPage() {
         return
       }
 
-      if (json.nextStep === 'dashboard') {
-        toast.success('Email verified!')
-        router.push('/dashboard')
-        router.refresh()
-        return
-      }
-
-      setStep('verify_phone')
-      toast.success('Email verified! Now verify your phone number.')
-    } catch {
-      toast.error('Verification failed. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  // ── Step 3: Verify phone OTP ───────────────────────────────────────────────
-
-  async function verifyPhone() {
-    if (phoneOtp.length !== 6) return
-    setIsLoading(true)
-    try {
-      const res = await fetch('/api/auth/verify-phone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, otp: phoneOtp }),
-      })
-
-      const json = await res.json()
-      if (!res.ok) {
-        toast.error(json.error || 'Verification failed')
-        return
-      }
-
-      toast.success('Phone verified! Welcome to Frenz Pay.')
+      // SMS verification removed — email is the only gate now.
+      toast.success('Email verified! Welcome to Frenz Pay.')
       router.push('/dashboard')
       router.refresh()
     } catch {
@@ -206,15 +172,15 @@ export default function SignupPage() {
     }
   }
 
-  // ── Resend OTP ─────────────────────────────────────────────────────────────
+  // ── Resend email OTP ────────────────────────────────────────────────────────
 
-  async function resendOtp(type: 'email' | 'phone') {
+  async function resendEmailOtp() {
     setIsResending(true)
     try {
       const res = await fetch('/api/auth/resend-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId, type }),
+        body: JSON.stringify({ userId, type: 'email' }),
       })
 
       const json = await res.json()
@@ -223,11 +189,8 @@ export default function SignupPage() {
         return
       }
 
-      toast.success(`New code sent to your ${type}.`)
-      if (json._devOtp) {
-        if (type === 'email') setEmailOtp(json._devOtp)
-        else setPhoneOtp(json._devOtp)
-      }
+      toast.success('New code sent to your email.')
+      if (json._devOtp) setEmailOtp(json._devOtp)
     } catch {
       toast.error('Failed to resend. Please try again.')
     } finally {
@@ -235,24 +198,17 @@ export default function SignupPage() {
     }
   }
 
-  // ── Render: OTP verification ───────────────────────────────────────────────
+  // ── Render: email OTP verification ─────────────────────────────────────────
 
-  if (step === 'verify_email' || step === 'verify_phone') {
-    const isEmail = step === 'verify_email'
-    const otp = isEmail ? emailOtp : phoneOtp
-    const setOtp = isEmail ? setEmailOtp : setPhoneOtp
-    const onVerify = isEmail ? verifyEmail : verifyPhone
-
+  if (step === 'verify_email') {
     return (
       <div>
         <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
           <ShieldCheck className="size-6 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Verify your {isEmail ? 'email' : 'phone'}
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight">Verify your email</h1>
         <p className="text-muted-foreground mt-1 mb-6">
-          Enter the 6-digit code sent to your {isEmail ? 'email address' : 'phone number'}.
+          Enter the 6-digit code sent to your email address.
           {process.env.NODE_ENV !== 'production' && (
             <span className="block text-xs text-yellow-600 mt-1">
               [Dev] Check network response or auto-filled above.
@@ -261,11 +217,7 @@ export default function SignupPage() {
         </p>
 
         <div className="flex justify-center mb-6">
-          <InputOTP
-            maxLength={6}
-            value={otp}
-            onChange={setOtp}
-          >
+          <InputOTP maxLength={6} value={emailOtp} onChange={setEmailOtp}>
             <InputOTPGroup>
               <InputOTPSlot index={0} />
               <InputOTPSlot index={1} />
@@ -279,8 +231,8 @@ export default function SignupPage() {
 
         <Button
           className="w-full h-10"
-          onClick={onVerify}
-          disabled={otp.length !== 6 || isLoading}
+          onClick={verifyEmail}
+          disabled={emailOtp.length !== 6 || isLoading}
         >
           {isLoading ? (
             <Loader2 className="size-4 animate-spin mr-2" />
@@ -295,7 +247,7 @@ export default function SignupPage() {
           <button
             type="button"
             className="text-primary hover:underline disabled:opacity-50"
-            onClick={() => resendOtp(isEmail ? 'email' : 'phone')}
+            onClick={resendEmailOtp}
             disabled={isResending}
           >
             {isResending ? 'Sending…' : 'Resend'}

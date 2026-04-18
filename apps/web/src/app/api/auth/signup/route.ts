@@ -8,8 +8,10 @@
  * 4. Check email + phone uniqueness
  * 5. Hash password (Argon2id)
  * 6. Encrypt phone + create blind index
- * 7. Create User + EmailVerificationToken + PhoneOtp in DB transaction
- * 8. (Dev) Return OTPs in response; (Prod) send via email/SMS providers
+ * 7. Create User + EmailVerificationToken in DB transaction
+ *    (phoneVerified defaults to true — no SMS at signup; phone is re-checked
+ *    at KYC T1 via BVN/NIN cross-reference)
+ * 8. Send email OTP via Purelymail SMTP (TODO: phone SMS was removed 2026-04-18)
  *
  * Returns 201 { userId, nextStep: 'verify_email' }
  */
@@ -135,19 +137,17 @@ export async function POST(request: NextRequest) {
   // 5. Hash password
   const passwordHash = await hashPassword(password);
 
-  // 6. Encrypt phone
+  // 6. Encrypt phone (stored for KYC — no verification required at signup)
   const phoneCiphertext = encryptField(phone, 'user:phone');
 
-  // 7. Generate OTPs
+  // 7. Generate email OTP only. Phone verification is handled at KYC T1+
+  //    (BVN/NIN cross-check) — no SMS required at signup to cut friction.
   const emailOtp = generateOtp();
-  const phoneOtp = generateOtp();
   const emailOtpHash = hashToken(emailOtp);
-  const phoneOtpHash = hashToken(phoneOtp);
 
   const now = new Date();
   const OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
   const emailExpiry = new Date(now.getTime() + OTP_TTL_MS);
-  const phoneExpiry = new Date(now.getTime() + OTP_TTL_MS);
 
   // 8. DB transaction
   let userId: string;
@@ -165,7 +165,7 @@ export async function POST(request: NextRequest) {
           lastName,
           displayName: `${firstName} ${lastName}`,
           emailVerified: false,
-          phoneVerified: false,
+          phoneVerified: true,  // no SMS verification at signup — verified later at KYC T1
           status: 'PENDING_KYC',
           kycTier: 'T0',
           kycStatus: 'NOT_STARTED',
@@ -181,14 +181,8 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      await tx.phoneOtp.create({
-        data: {
-          userId: created.id,
-          phone,
-          otpHash: phoneOtpHash,
-          expiresAt: phoneExpiry,
-        },
-      });
+      // Phone OTP intentionally omitted — SMS verification removed from signup
+      // flow. The phone number is kept encrypted on User.phone for KYC T1+.
 
       return created;
     });
@@ -220,13 +214,12 @@ export async function POST(request: NextRequest) {
   const response: Record<string, unknown> = {
     userId,
     nextStep: 'verify_email',
-    message: 'Account created. Please verify your email and phone number.',
+    message: 'Account created. Check your email for the verification code.',
   };
 
-  // Dev: return OTPs in response for testing
+  // Dev: return OTP in response for testing
   if (process.env.NODE_ENV !== 'production') {
     response['_devEmailOtp'] = emailOtp;
-    response['_devPhoneOtp'] = phoneOtp;
   }
 
   return NextResponse.json(response, { status: 201 });

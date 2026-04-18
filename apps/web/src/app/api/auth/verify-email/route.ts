@@ -84,32 +84,27 @@ export async function POST(request: NextRequest) {
 
   logger.info({ userId }, 'email verified');
 
-  // If phone is also verified, auto-create session so user lands on dashboard
-  if (user.phoneVerified) {
-    const cookieValue = await createSession({
-      userId: user.id,
-      email: user.email,
-      role: 'user',
-      kycTier: 0,
-      mfaVerified: false,
-    });
-
-    const response = NextResponse.json({
-      verified: true,
-      nextStep: 'dashboard',
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName ?? `${user.firstName} ${user.lastName}`,
-      },
-    });
-
-    response.cookies.set(sessionCookieOptions(cookieValue, 12 * 3600));
-    return response;
-  }
-
-  return NextResponse.json({
-    verified: true,
-    nextStep: 'verify_phone',
+  // SMS verification was removed at signup (2026-04-18) — email is the only
+  // gate, so every successful verify leads straight to the dashboard with a
+  // fresh session cookie.
+  const cookieValue = await createSession({
+    userId: user.id,
+    email: user.email,
+    role: 'user',
+    kycTier: 0,
+    mfaVerified: false,
   });
+
+  const response = NextResponse.json({
+    verified: true,
+    nextStep: 'dashboard',
+    user: {
+      id: user.id,
+      email: user.email,
+      displayName: user.displayName ?? `${user.firstName} ${user.lastName}`,
+    },
+  });
+
+  response.cookies.set(sessionCookieOptions(cookieValue, 12 * 3600));
+  return response;
 }

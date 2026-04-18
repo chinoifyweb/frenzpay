@@ -13,14 +13,14 @@ import { z } from 'zod';
 import { prisma } from '@frenzpay/db';
 import { generateOtp, hashToken } from '@frenzpay/auth';
 import { checkAuthRateLimit, rateLimitHeaders } from '@frenzpay/auth/rate-limit';
-import { decryptField } from '@frenzpay/crypto';
 import { redis } from '@/lib/redis';
 import { logger } from '@frenzpay/logger';
-import type { CipherPayload } from '@frenzpay/crypto';
 import { sendEmailVerificationOtp } from '@/lib/email';
 
 const Schema = z.object({
   userId: z.string().uuid(),
+  // SMS resend was removed 2026-04-18. Schema still accepts "phone" so old
+  // clients don't crash; the handler short-circuits with a 410 below.
   type: z.enum(['email', 'phone']),
 });
 
@@ -93,26 +93,17 @@ export async function POST(request: NextRequest) {
       );
     }
   } else {
-    // Decrypt phone to get E.164 number for SMS
-    let phoneNumber = 'unknown';
-    if (user.phone) {
-      try {
-        phoneNumber = decryptField(user.phone as unknown as CipherPayload);
-      } catch { /* non-fatal */ }
-    }
-
-    // Expire previous OTPs
-    await prisma.phoneOtp.updateMany({
-      where: { userId, usedAt: null },
-      data: { expiresAt: new Date(0) },
-    });
-
-    await prisma.phoneOtp.create({
-      data: { userId, phone: phoneNumber, otpHash, expiresAt },
-    });
-
-    // TODO(phase-7): send SMS via Termii/Africa's Talking
-    logger.info({ userId }, 'resend: phone OTP created');
+    // SMS verification removed 2026-04-18. Short-circuit so stale clients
+    // get a deterministic 410 instead of a silent no-op.
+    logger.info({ userId }, 'resend: phone OTP requested but SMS layer is disabled');
+    return NextResponse.json(
+      {
+        error: 'Phone verification is no longer required at signup.',
+        deprecated: true,
+        since: '2026-04-18',
+      },
+      { status: 410 },
+    );
   }
 
   const response: Record<string, unknown> = {
