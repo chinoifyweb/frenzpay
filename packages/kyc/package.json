@@ -1,0 +1,28 @@
+{
+  "name": "@frenzpay/kyc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./dojah": {
+      "types": "./dist/dojah.d.ts",
+      "default": "./src/dojah.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.7.3"
+  }
+}

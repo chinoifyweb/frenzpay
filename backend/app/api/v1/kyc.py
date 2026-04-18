@@ -220,8 +220,12 @@ async def verify_selfie(
     user.kyc_tier = KYCTier.TIER_1
     user.kyc_status = KYCStatus.APPROVED
 
+    # Provision wallets + Graph customer + virtual accounts
+    from app.services.wallet_service import provision_tier1_wallets
+    await provision_tier1_wallets(user, db)
+
     return {
         "status": "approved",
         "kyc_tier": "TIER_1",
-        "message": "KYC Tier 1 approved. Your wallets are being created.",
+        "message": "KYC Tier 1 approved. Your wallets have been created.",
     }

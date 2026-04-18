@@ -57,6 +57,8 @@ class FXQuoteResponse(BaseModel):
 
 class ConvertRequest(BaseModel):
     quote_id: str
+    source_amount: Decimal = Field(..., gt=0, description="Amount to convert from source currency")
+    idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
     otp: str | None = None
 
 

@@ -1,0 +1,20 @@
+{
+  "name": "FrenzPay",
+  "short_name": "FrenzPay",
+  "description": "Cross-border payments for the African diaspora",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090b",
+  "theme_color": "#0ea5e9",
+  "categories": ["finance", "business"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Send",     "url": "/dashboard/send",     "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Wallet",   "url": "/dashboard/wallet",   "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Activity", "url": "/dashboard/activity", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

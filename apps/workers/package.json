@@ -1,0 +1,31 @@
+{
+  "name": "@frenzpay/workers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run --passWithNoTests",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@frenzpay/db": "workspace:*",
+    "@frenzpay/ledger": "workspace:*",
+    "@frenzpay/logger": "workspace:*",
+    "@frenzpay/providers": "workspace:*",
+    "@frenzpay/events": "workspace:*",
+    "bullmq": "^5.53.3",
+    "ioredis": "^5.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.2.4"
+  }
+}

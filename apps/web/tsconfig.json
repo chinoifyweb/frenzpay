@@ -1,0 +1,93 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": false,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": [
+        "./src/*"
+      ],
+      "@frenzpay/auth": [
+        "../../packages/auth/src/index.ts"
+      ],
+      "@frenzpay/auth/session": [
+        "../../packages/auth/src/session.ts"
+      ],
+      "@frenzpay/auth/rate-limit": [
+        "../../packages/auth/src/rate-limit.ts"
+      ],
+      "@frenzpay/auth/totp": [
+        "../../packages/auth/src/totp.ts"
+      ],
+      "@frenzpay/crypto": [
+        "../../packages/crypto/src/index.ts"
+      ],
+      "@frenzpay/db": [
+        "../../packages/db/src/client.ts"
+      ],
+      "@frenzpay/ledger": [
+        "../../packages/ledger/src/index.ts"
+      ],
+      "@frenzpay/logger": [
+        "../../packages/logger/src/index.ts"
+      ],
+      "@frenzpay/validators": [
+        "../../packages/validators/src/index.ts"
+      ],
+      "@frenzpay/events": [
+        "../../packages/events/src/index.ts"
+      ],
+      "@frenzpay/providers": [
+        "../../packages/providers/src/index.ts"
+      ],
+      "@frenzpay/ui": [
+        "../../packages/ui/src/index.ts"
+      ],
+      "@frenzpay/kyc": [
+        "../../packages/kyc/src/index.ts"
+      ],
+      "@frenzpay/kyc/dojah": [
+        "../../packages/kyc/src/dojah.ts"
+      ],
+      "@frenzpay/providers/bridge": [
+        "../../packages/providers/src/bridge.ts"
+      ],
+      "@frenzpay/providers/paystack": [
+        "../../packages/providers/src/paystack.ts"
+      ],
+      "@frenzpay/providers/bridge-cards": [
+        "../../packages/providers/src/bridge-cards.ts"
+      ]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

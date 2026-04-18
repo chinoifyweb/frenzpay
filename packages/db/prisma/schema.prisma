@@ -1,0 +1,1094 @@
+// FrenzPay Prisma Schema
+// Non-negotiables enforced here:
+// - No balance columns on User/Wallet — all balances derived from LedgerEntry sums
+// - All monetary amounts as BigInt (smallest unit: cents for USD, kobo for NGN)
+// - Idempotency keys on every mutation table
+// - AdminAuditLog is append-only (enforced via Postgres trigger)
+// - PII fields stored as JSONB CipherPayload (encrypted by packages/crypto middleware)
+
+generator client {
+  provider        = "prisma-client-js"
+  // Default output (into node_modules/.prisma/client) — keeps `@prisma/client`'s
+  // standard runtime resolver happy in a pnpm monorepo.
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DIRECT_URL")
+  extensions = [pgcrypto, uuidOssp(map: "uuid-ossp")]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// IDENTITY & AUTH
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  FROZEN       // self-frozen via panic button
+  SUSPENDED    // admin-suspended
+  PENDING_KYC
+  DELETED
+}
+
+enum KycTier {
+  T0 // email + phone only
+  T1 // + FrenzTag
+  T2 // + BVN + liveness
+  T3 // + Gov ID + proof of address
+}
+
+enum KycStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  SANCTIONS_HOLD
+}
+
+model User {
+  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email     String     @unique
+  // encrypted: { ciphertext, iv, authTag, wrappedDek, keyVersion }
+  phone     Json?      @db.JsonB
+  // blind index for phone lookups (HMAC-SHA-256)
+  phoneBlindIndex String? @unique @map("phone_blind_index")
+
+  passwordHash  String   @map("password_hash")
+  status        UserStatus @default(PENDING_KYC)
+  kycTier       KycTier    @default(T0) @map("kyc_tier")
+  kycStatus     KycStatus  @default(NOT_STARTED) @map("kyc_status")
+
+  // Profile
+  firstName     String?  @map("first_name")
+  lastName      String?  @map("last_name")
+  displayName   String?  @map("display_name")
+  avatarUrl     String?  @map("avatar_url")
+  country       String?  // ISO 3166-1 alpha-2
+  // encrypted DOB
+  dob           Json?    @db.JsonB
+  // encrypted address fields
+  addressLine1  Json?    @db.JsonB @map("address_line1")
+  addressLine2  Json?    @db.JsonB @map("address_line2")
+  city          Json?    @db.JsonB
+  postalCode    Json?    @db.JsonB @map("postal_code")
+
+  // Flags
+  emailVerified Boolean  @default(false) @map("email_verified")
+  phoneVerified Boolean  @default(false) @map("phone_verified")
+  mfaRequired   Boolean  @default(false) @map("mfa_required")
+  isPep         Boolean  @default(false) @map("is_pep") // politically exposed person
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at") // soft delete
+
+  // Relations
+  frenzTag         FrenzTag?
+  sessions         Session[]
+  devices          Device[]
+  loginAttempts    LoginAttempt[]
+  mfaSecrets       MfaSecret[]
+  passkeys         Passkey[]
+  transactionPin   TransactionPin?
+  passwordResetTokens PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  phoneOtps        PhoneOtp[]
+  kycSubmissions   KycSubmission[]
+  sanctionsChecks  SanctionsCheck[]
+  tierLimitOverrides TierLimitOverride[]
+  accounts         Account[]
+  initiatedTransactions Transaction[] @relation("initiator")
+  counterpartyTransactions Transaction[] @relation("counterparty")
+  p2pSent          P2PTransfer[] @relation("sender")
+  p2pReceived      P2PTransfer[] @relation("recipient")
+  moneyRequestsSent MoneyRequest[] @relation("requester")
+  moneyRequestsReceived MoneyRequest[] @relation("requestee")
+  beneficiaries    Beneficiary[]
+  savingsLocks     SavingsLock[]
+  cards            Card[]
+  paymentLinks     PaymentLink[]
+  invoices         Invoice[]
+  externalAccounts UserExternalAccount[]
+  legalConsents    LegalConsent[]
+  auditLogs        AuditLog[]
+  webPushSubscriptions WebPushSubscription[]
+
+  @@index([email])
+  @@index([phoneBlindIndex])
+  @@index([status])
+  @@index([kycTier])
+  @@map("users")
+}
+
+model FrenzTag {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  tag         String   @unique // stored lowercase, 6-8 chars [a-z0-9]
+  isVerified  Boolean  @default(false) @map("is_verified") // blue tick
+  claimedAt   DateTime @default(now()) @map("claimed_at")
+  lastChangedAt DateTime? @map("last_changed_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reservations FrenzTagReservation[]
+
+  @@index([tag])
+  @@map("frenz_tags")
+}
+
+model FrenzTagReservation {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  frenzTagId    String   @map("frenz_tag_id") @db.Uuid
+  oldTag        String   @map("old_tag")
+  quarantineUntil DateTime @map("quarantine_until")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  frenzTag      FrenzTag @relation(fields: [frenzTagId], references: [id], onDelete: Cascade)
+
+  @@index([oldTag])
+  @@index([quarantineUntil])
+  @@map("frenz_tag_reservations")
+}
+
+model Session {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  token        String   @unique // hashed before storage
+  deviceId     String?  @map("device_id") @db.Uuid
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  country      String?
+  expiresAt    DateTime @map("expires_at")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  revokedAt    DateTime? @map("revoked_at")
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device       Device?  @relation(fields: [deviceId], references: [id])
+
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Device {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  fingerprint     String   // composite hash: IP + UA + accept-language
+  name            String?  // user-friendly label e.g. "Chrome on Mac"
+  userAgent       String?  @map("user_agent")
+  lastIp          String?  @map("last_ip")
+  lastCountry     String?  @map("last_country")
+  isTrusted       Boolean  @default(false) @map("is_trusted")
+  trustedAt       DateTime? @map("trusted_at")
+  lastSeenAt      DateTime @default(now()) @map("last_seen_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  revokedAt       DateTime? @map("revoked_at")
+
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+
+  @@index([userId])
+  @@index([fingerprint])
+  @@map("devices")
+}
+
+model LoginAttempt {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String?  @map("user_id") @db.Uuid // null for non-existent email
+  email       String
+  ipAddress   String   @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  country     String?
+  success     Boolean
+  failReason  String?  @map("fail_reason")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([email, createdAt])
+  @@index([ipAddress, createdAt])
+  @@map("login_attempts")
+}
+
+model MfaSecret {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  type      String   // "totp" | "backup_codes"
+  secret    String   // encrypted TOTP secret or hashed backup codes
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_secrets")
+}
+
+model Passkey {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  credentialId      String   @unique @map("credential_id")
+  publicKey         Bytes    @map("public_key")
+  counter           BigInt
+  deviceType        String   @map("device_type") // "platform" | "cross-platform"
+  backedUp          Boolean  @default(false) @map("backed_up")
+  transports        String[] // json array of transport types
+  name              String?  // user-assigned label
+  lastUsedAt        DateTime? @map("last_used_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("passkeys")
+}
+
+model TransactionPin {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @unique @map("user_id") @db.Uuid
+  pinHash     String   @map("pin_hash") // Argon2id
+  failedAttempts Int   @default(0) @map("failed_attempts")
+  lockedUntil DateTime? @map("locked_until")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transaction_pins")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  usedAt    DateTime? @map("used_at")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  tokenHash String   @unique @map("token_hash")
+  usedAt    DateTime? @map("used_at")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verification_tokens")
+}
+
+model PhoneOtp {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  phone     String
+  otpHash   String   @map("otp_hash")
+  attempts  Int      @default(0)
+  usedAt    DateTime? @map("used_at")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("phone_otps")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KYC
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum KycSubmissionStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model KycSubmission {
+  id               String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String              @map("user_id") @db.Uuid
+  tier             KycTier
+  status           KycSubmissionStatus @default(PENDING)
+  provider         String?             // "dojah" | "manual"
+  externalRef      String?             @map("external_ref")
+
+  // Encrypted PII — stored as JSONB CipherPayload
+  fullLegalName    Json?   @db.JsonB @map("full_legal_name")
+  bvn              Json?   @db.JsonB
+  bvnBlindIndex    String? @unique @map("bvn_blind_index")
+  ssnLast4         Json?   @db.JsonB @map("ssn_last4")
+  nin              Json?   @db.JsonB
+  ninBlindIndex    String? @unique @map("nin_blind_index")
+  passportNumber   Json?   @db.JsonB @map("passport_number")
+  passportBlindIndex String? @unique @map("passport_blind_index")
+  driverLicenseNumber Json? @db.JsonB @map("driver_license_number")
+
+  // Non-PII metadata
+  sourceOfFunds    String? @map("source_of_funds")
+  rejectionReason  String? @map("rejection_reason")
+  reviewedBy       String? @map("reviewed_by") @db.Uuid // AdminUser id
+  submittedAt      DateTime @default(now()) @map("submitted_at")
+  reviewedAt       DateTime? @map("reviewed_at")
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents        KycDocument[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_submissions")
+}
+
+model KycDocument {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  submissionId    String   @map("submission_id") @db.Uuid
+  docType         String   @map("doc_type") // "id_front" | "id_back" | "selfie" | "proof_of_address"
+  // S3 key only — URL generated on-demand as pre-signed; DEK stored below
+  storageKey      String   @map("storage_key")
+  encryptedDek    String   @map("encrypted_dek") // base64-wrapped DEK
+  mimeType        String   @map("mime_type")
+  fileSizeBytes   BigInt   @map("file_size_bytes")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  submission      KycSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@map("kyc_documents")
+}
+
+model SanctionsCheck {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  provider    String   // "dojah" | "ofac_sdn"
+  result      String   // "clear" | "hit" | "error"
+  hitDetails  Json?    @db.JsonB @map("hit_details")
+  ranAt       DateTime @default(now()) @map("ran_at")
+  nextRunAt   DateTime? @map("next_run_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([nextRunAt])
+  @@map("sanctions_checks")
+}
+
+model KycTierLimit {
+  id                    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tier                  KycTier @unique
+  depositLimitDailyCents   BigInt  @map("deposit_limit_daily_cents")
+  withdrawLimitDailyCents  BigInt  @map("withdraw_limit_daily_cents")
+  balanceCapCents          BigInt  @map("balance_cap_cents")
+  p2pSendLimitDailyCents   BigInt  @map("p2p_send_limit_daily_cents")
+  p2pReceiveLimitDailyCents BigInt @map("p2p_receive_limit_daily_cents")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  @@map("kyc_tier_limits")
+}
+
+model TierLimitOverride {
+  id                String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  limitType         String  @map("limit_type") // e.g. "deposit_daily" | "withdraw_daily"
+  overrideAmountCents BigInt @map("override_amount_cents")
+  reason            String
+  approvedBy        String  @map("approved_by") @db.Uuid // AdminUser id
+  expiresAt         DateTime? @map("expires_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("tier_limit_overrides")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOUBLE-ENTRY LEDGER — THE FINANCIAL HEART
+// Non-negotiables:
+// - No balance column anywhere — balances are derived from ledger sums
+// - All amounts BigInt in smallest currency unit
+// - LedgerEntry is immutable (Postgres trigger blocks UPDATE/DELETE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AccountOwnerType {
+  USER
+  SYSTEM
+}
+
+enum AccountSubtype {
+  AVAILABLE
+  PENDING
+  HOLD
+  RESERVED
+  LOCKED // savings lock
+}
+
+model Account {
+  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ownerType   AccountOwnerType @map("owner_type")
+  ownerId     String?          @map("owner_id") @db.Uuid // null for system accounts
+  currency    String           // "USD" | "USDC" | "NGN"
+  subtype     AccountSubtype
+  name        String?          // for system accounts e.g. "bridge_usd_omnibus"
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  user        User?            @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  debitEntries  LedgerEntry[]  @relation("debit_account")
+  creditEntries LedgerEntry[]  @relation("credit_account")
+
+  @@unique([ownerId, currency, subtype], name: "user_currency_subtype")
+  @@index([ownerType, ownerId])
+  @@index([currency])
+  @@map("accounts")
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  P2P
+  FX
+  FEE
+  REFUND
+  LOCK
+  UNLOCK
+  CARD_AUTH
+  CARD_CAPTURE
+  CARD_REVERSAL
+}
+
+enum TransactionStatus {
+  PENDING
+  POSTED
+  FAILED
+  REVERSED
+}
+
+model Transaction {
+  id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type             TransactionType
+  status           TransactionStatus @default(PENDING)
+  initiatorUserId  String?           @map("initiator_user_id") @db.Uuid
+  counterpartyUserId String?         @map("counterparty_user_id") @db.Uuid
+  idempotencyKey   String            @unique @map("idempotency_key")
+  externalRef      String?           @map("external_ref")
+  // All amounts in smallest unit (BigInt)
+  amount           BigInt
+  currency         String
+  feeAmount        BigInt            @default(0) @map("fee_amount")
+  feeCurrency      String?           @map("fee_currency")
+  metadata         Json?             @db.JsonB
+  createdAt        DateTime          @default(now()) @map("created_at")
+  postedAt         DateTime?         @map("posted_at")
+
+  initiator        User?             @relation("initiator", fields: [initiatorUserId], references: [id], onDelete: SetNull)
+  counterparty     User?             @relation("counterparty", fields: [counterpartyUserId], references: [id], onDelete: SetNull)
+  ledgerEntries    LedgerEntry[]
+  p2pTransfer      P2PTransfer?
+  withdrawal       Withdrawal?
+  savingsLock      SavingsLock?      @relation("lock_tx")
+  savingsUnlock    SavingsLock?      @relation("unlock_tx")
+  cardAuthorization CardAuthorization?
+
+  @@index([initiatorUserId])
+  @@index([externalRef])
+  @@index([idempotencyKey])
+  @@index([createdAt])
+  @@map("transactions")
+}
+
+// Immutable — Postgres trigger blocks UPDATE/DELETE
+model LedgerEntry {
+  id                String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId     String      @map("transaction_id") @db.Uuid
+  debitAccountId    String      @map("debit_account_id") @db.Uuid
+  creditAccountId   String      @map("credit_account_id") @db.Uuid
+  amount            BigInt      // must be positive
+  currency          String
+  createdAt         DateTime    @default(now()) @map("created_at")
+  metadata          Json?       @db.JsonB
+
+  transaction       Transaction @relation(fields: [transactionId], references: [id])
+  debitAccount      Account     @relation("debit_account", fields: [debitAccountId], references: [id])
+  creditAccount     Account     @relation("credit_account", fields: [creditAccountId], references: [id])
+
+  @@index([transactionId])
+  @@index([debitAccountId])
+  @@index([creditAccountId])
+  @@index([createdAt])
+  @@map("ledger_entries")
+}
+
+model BalanceSnapshot {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  accountId   String   @map("account_id") @db.Uuid
+  balance     BigInt
+  snapshotDate DateTime @map("snapshot_date") @db.Date
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([accountId, snapshotDate])
+  @@index([snapshotDate])
+  @@map("balance_snapshots")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BRIDGE — USD VIRTUAL ACCOUNTS & EXTERNAL ACCOUNTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UserExternalAccount {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  provider          String   // "bridge"
+  externalAccountId String   @map("external_account_id")
+  type              String   // "virtual_account" | "wire_account" | "ach_account"
+  currency          String
+  accountName       String?  @map("account_name")
+  routingNumber     String?  @map("routing_number")
+  accountNumber     String?  @map("account_number")
+  bankName          String?  @map("bank_name")
+  status            String   @default("active")
+  metadata          Json?    @db.JsonB
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([externalAccountId])
+  @@map("user_external_accounts")
+}
+
+// Deduplication table for Bridge webhooks
+model BridgeWebhookEvent {
+  id          String   @id // Bridge's event ID
+  eventType   String   @map("event_type")
+  payload     Json     @db.JsonB
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([eventType])
+  @@map("bridge_webhook_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// P2P TRANSFERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model P2PTransfer {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId String   @unique @map("transaction_id") @db.Uuid
+  senderId      String   @map("sender_id") @db.Uuid
+  recipientId   String   @map("recipient_id") @db.Uuid
+  note          String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  transaction   Transaction @relation(fields: [transactionId], references: [id])
+  sender        User        @relation("sender", fields: [senderId], references: [id])
+  recipient     User        @relation("recipient", fields: [recipientId], references: [id])
+
+  @@index([senderId])
+  @@index([recipientId])
+  @@map("p2p_transfers")
+}
+
+enum MoneyRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+model MoneyRequest {
+  id           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  requesterId  String             @map("requester_id") @db.Uuid
+  requesteeId  String             @map("requestee_id") @db.Uuid
+  amountCents  BigInt             @map("amount_cents")
+  currency     String             @default("USD")
+  note         String?
+  status       MoneyRequestStatus @default(PENDING)
+  expiresAt    DateTime           @map("expires_at")
+  resolvedAt   DateTime?          @map("resolved_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  requester    User               @relation("requester", fields: [requesterId], references: [id])
+  requestee    User               @relation("requestee", fields: [requesteeId], references: [id])
+
+  @@index([requesteeId])
+  @@index([status])
+  @@map("money_requests")
+}
+
+model Beneficiary {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String   @map("user_id") @db.Uuid
+  type          String   // "frenztag" | "bank_account"
+  // FrenzTag beneficiary
+  targetUserId  String?  @map("target_user_id") @db.Uuid
+  // Bank beneficiary
+  bankCode      String?  @map("bank_code")
+  bankName      String?  @map("bank_name")
+  accountNumber String?  @map("account_number")
+  accountName   String?  @map("account_name")
+  currency      String?  @default("NGN")
+  country       String?  @default("NG")
+  // Cooling period: new bank beneficiaries must wait 24hr (T2) before first use
+  coolingPeriodEndsAt DateTime? @map("cooling_period_ends_at")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("beneficiaries")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NGN WITHDRAWALS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum WithdrawalStatus {
+  PENDING_OTP
+  PENDING
+  PROCESSING
+  SETTLED
+  FAILED
+  REFUNDED
+}
+
+model Withdrawal {
+  id                  String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transactionId       String          @unique @map("transaction_id") @db.Uuid
+  beneficiaryId       String          @map("beneficiary_id") @db.Uuid
+  sourceAmountCents   BigInt          @map("source_amount_cents") // USD cents
+  destAmountKobo      BigInt          @map("dest_amount_kobo")   // NGN kobo
+  fxRateMicro         BigInt          @map("fx_rate_micro")      // rate * 1e6
+  fxMarkupBps         Int             @map("fx_markup_bps")
+  feeCents            BigInt          @map("fee_cents")
+  status              WithdrawalStatus @default(PENDING_OTP)
+  provider            String          @default("flutterwave")
+  externalRef         String?         @unique @map("external_ref")
+  failureReason       String?         @map("failure_reason")
+  settledAt           DateTime?       @map("settled_at")
+  createdAt           DateTime        @default(now()) @map("created_at")
+
+  transaction         Transaction     @relation(fields: [transactionId], references: [id])
+
+  @@index([status])
+  @@index([externalRef])
+  @@map("withdrawals")
+}
+
+// Deduplication for Flutterwave webhooks
+model FlutterwaveWebhookEvent {
+  id          String   @id // Flutterwave's event/tx ID
+  eventType   String   @map("event_type")
+  payload     Json     @db.JsonB
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("flutterwave_webhook_events")
+}
+
+// Deduplication for Paystack webhooks (NGN payouts)
+model PaystackWebhookEvent {
+  id          String   @id // Paystack's event reference
+  eventType   String   @map("event_type")
+  payload     Json     @db.JsonB
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@index([eventType])
+  @@map("paystack_webhook_events")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIRTUAL CARDS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum CardStatus {
+  ACTIVE
+  FROZEN
+  TERMINATED
+}
+
+model Card {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String     @map("user_id") @db.Uuid
+  externalCardId  String     @unique @map("external_card_id") // Bridge card ID
+  last4           String     @map("last4")
+  expiryMonth     Int        @map("expiry_month")
+  expiryYear      Int        @map("expiry_year")
+  brand           String     // "Visa" | "Mastercard"
+  status          CardStatus @default(ACTIVE)
+  // Spending limits
+  dailyLimitCents  BigInt?   @map("daily_limit_cents")
+  monthlyLimitCents BigInt?  @map("monthly_limit_cents")
+  // Reveal token: short-lived token allowing PAN/CVV fetch from Bridge
+  revealTokenHash  String?   @map("reveal_token_hash")
+  revealTokenExpiry DateTime? @map("reveal_token_expiry")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  authorizations   CardAuthorization[]
+
+  @@index([userId])
+  @@map("cards")
+}
+
+enum CardAuthStatus {
+  PENDING
+  CLEARED
+  REVERSED
+  DECLINED
+}
+
+model CardAuthorization {
+  id              String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cardId          String         @map("card_id") @db.Uuid
+  transactionId   String?        @unique @map("transaction_id") @db.Uuid
+  externalAuthId  String         @unique @map("external_auth_id")
+  merchantName    String?        @map("merchant_name")
+  merchantCategory String?       @map("merchant_category")
+  authAmountCents BigInt         @map("auth_amount_cents")
+  clearedAmountCents BigInt?     @map("cleared_amount_cents")
+  currency        String         @default("USD")
+  status          CardAuthStatus @default(PENDING)
+  authAt          DateTime       @default(now()) @map("auth_at")
+  clearedAt       DateTime?      @map("cleared_at")
+
+  card            Card           @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  transaction     Transaction?   @relation(fields: [transactionId], references: [id])
+
+  @@index([cardId])
+  @@map("card_authorizations")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAYMENT LINKS & INVOICING
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum PaymentLinkStatus {
+  ACTIVE
+  EXPIRED
+  COMPLETED
+  CANCELLED
+}
+
+model PaymentLink {
+  id           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String            @map("user_id") @db.Uuid
+  slug         String            @unique // URL slug
+  type         String            // "fixed" | "open" | "invoice"
+  fixedAmountCents BigInt?       @map("fixed_amount_cents")
+  minAmountCents   BigInt?       @map("min_amount_cents")
+  maxAmountCents   BigInt?       @map("max_amount_cents")
+  currency     String            @default("USD")
+  description  String?
+  status       PaymentLinkStatus @default(ACTIVE)
+  expiresAt    DateTime?         @map("expires_at")
+  viewCount    Int               @default(0) @map("view_count")
+  createdAt    DateTime          @default(now()) @map("created_at")
+
+  user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoice      Invoice?
+
+  @@index([userId])
+  @@index([slug])
+  @@map("payment_links")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id             String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  paymentLinkId  String?       @unique @map("payment_link_id") @db.Uuid
+  clientName     String        @map("client_name")
+  clientEmail    String        @map("client_email")
+  invoiceNumber  String        @unique @map("invoice_number")
+  status         InvoiceStatus @default(DRAFT)
+  subtotalCents  BigInt        @map("subtotal_cents")
+  taxCents       BigInt        @default(0) @map("tax_cents")
+  totalCents     BigInt        @map("total_cents")
+  currency       String        @default("USD")
+  notes          String?
+  dueAt          DateTime?     @map("due_at")
+  paidAt         DateTime?     @map("paid_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentLink    PaymentLink?  @relation(fields: [paymentLinkId], references: [id])
+  lineItems      InvoiceLineItem[]
+  payments       InvoicePayment[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id           String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId    String  @map("invoice_id") @db.Uuid
+  description  String
+  quantity     Int     @default(1)
+  unitPriceCents BigInt @map("unit_price_cents")
+  totalCents   BigInt  @map("total_cents")
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  invoice      Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_line_items")
+}
+
+model InvoicePayment {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId     String   @map("invoice_id") @db.Uuid
+  transactionId String?  @map("transaction_id") @db.Uuid
+  amountCents   BigInt   @map("amount_cents")
+  currency      String
+  paidAt        DateTime @default(now()) @map("paid_at")
+
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_payments")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SAVINGS LOCKS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum SavingsLockStatus {
+  ACTIVE
+  MATURED
+  BROKEN_EARLY
+}
+
+model SavingsLock {
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String           @map("user_id") @db.Uuid
+  lockTransactionId String          @unique @map("lock_transaction_id") @db.Uuid
+  unlockTransactionId String?        @unique @map("unlock_transaction_id") @db.Uuid
+  amountCents      BigInt           @map("amount_cents")
+  currency         String           @default("USD")
+  goalName         String?          @map("goal_name")
+  status           SavingsLockStatus @default(ACTIVE)
+  maturityAt       DateTime         @map("maturity_at")
+  earlyBreakFeeBps Int              @default(200) @map("early_break_fee_bps") // 200 = 2%
+  unlockedAt       DateTime?        @map("unlocked_at")
+  createdAt        DateTime         @default(now()) @map("created_at")
+
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lockTransaction  Transaction      @relation("lock_tx", fields: [lockTransactionId], references: [id])
+  unlockTransaction Transaction?    @relation("unlock_tx", fields: [unlockTransactionId], references: [id])
+
+  @@index([userId])
+  @@index([maturityAt, status])
+  @@map("savings_locks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FRAUD ENGINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum FraudAction {
+  ALLOW
+  REVIEW
+  BLOCK
+}
+
+model FraudRuleEvaluation {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String      @map("user_id") @db.Uuid
+  transactionId String?     @map("transaction_id") @db.Uuid
+  ruleName      String      @map("rule_name")
+  action        FraudAction
+  reason        String?
+  metadata      Json?       @db.JsonB
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([transactionId])
+  @@index([action, createdAt])
+  @@map("fraud_rule_evaluations")
+}
+
+model ReconciliationAlert {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type         String   // "ledger_drift" | "bridge_balance_mismatch" | "flw_balance_mismatch"
+  driftCents   BigInt?  @map("drift_cents")
+  details      Json?    @db.JsonB
+  resolvedAt   DateTime? @map("resolved_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("reconciliation_alerts")
+}
+
+// General webhook audit log — ALL webhooks logged here regardless of source
+model WebhookAuditLog {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source          String   // "bridge" | "flutterwave" | "dojah"
+  sourceIp        String?  @map("source_ip")
+  eventId         String?  @map("event_id")
+  eventType       String?  @map("event_type")
+  signatureValid  Boolean  @map("signature_valid")
+  timestampValid  Boolean  @map("timestamp_valid")
+  processingStatus String? @map("processing_status") // "accepted" | "rejected" | "duplicate"
+  processingError String?  @map("processing_error")
+  receivedAt      DateTime @default(now()) @map("received_at")
+
+  @@index([source, receivedAt])
+  @@index([eventId])
+  @@map("webhook_audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum AdminRole {
+  SUPER_ADMIN
+  COMPLIANCE
+  SUPPORT
+  FINANCE
+  READONLY
+}
+
+model AdminUser {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  fullName      String    @map("full_name")
+  role          AdminRole @default(READONLY)
+  isActive      Boolean   @default(true) @map("is_active")
+  mfaSecret     String?   @map("mfa_secret") // encrypted TOTP
+  // For hardware key enforcement on elevated roles
+  passkeyRequired Boolean @default(false) @map("passkey_required")
+  lastLoginAt   DateTime? @map("last_login_at")
+  lastLoginIp   String?   @map("last_login_ip")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Append-only audit log — Postgres trigger blocks UPDATE/DELETE on AdminAuditLog
+  auditLogs     AdminAuditLog[]
+  coSignedActions AdminAuditLog[] @relation("co_signer")
+
+  @@map("admin_users")
+}
+
+// APPEND-ONLY — Postgres trigger enforces no UPDATE/DELETE
+model AdminAuditLog {
+  id              BigInt   @id @default(autoincrement())
+  adminId         String   @map("admin_id") @db.Uuid
+  coSignerId      String?  @map("co_signer_id") @db.Uuid // for dual-approval actions
+  action          String
+  resourceType    String?  @map("resource_type")
+  resourceId      String?  @map("resource_id")
+  targetUserId    String?  @map("target_user_id") @db.Uuid
+  ipAddress       String?  @map("ip_address")
+  userAgent       String?  @map("user_agent")
+  metadata        Json?    @db.JsonB
+  conflictOfInterestCheck Boolean @default(false) @map("conflict_of_interest_check")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  admin           AdminUser @relation(fields: [adminId], references: [id])
+  coSigner        AdminUser? @relation("co_signer", fields: [coSignerId], references: [id])
+
+  @@index([adminId])
+  @@index([targetUserId])
+  @@index([action, createdAt])
+  @@map("admin_audit_logs")
+}
+
+// General user-facing audit log
+model AuditLog {
+  id           BigInt   @id @default(autoincrement())
+  userId       String?  @map("user_id") @db.Uuid
+  action       String
+  resourceType String?  @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  ipAddress    String?  @map("ip_address")
+  metadata     Json?    @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PLATFORM SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PlatformSetting {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  key         String   @unique
+  value       Json     @db.JsonB
+  description String?
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("platform_settings")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS & PWA
+// ─────────────────────────────────────────────────────────────────────────────
+
+model WebPushSubscription {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?  @map("user_agent")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("web_push_subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEGAL & COMPLIANCE
+// ─────────────────────────────────────────────────────────────────────────────
+
+model LegalConsent {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  docType     String   @map("doc_type") // "tos" | "privacy" | "cardholder" | "esign"
+  version     String
+  acceptedAt  DateTime @default(now()) @map("accepted_at")
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("legal_consents")
+}

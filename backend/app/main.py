@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.v1 import admin, auth, kyc, users, wallets, webhooks
+from app.api.v1 import admin, auth, kyc, transactions, users, wallets, webhooks
 from app.config import settings
 from app.core.logging import configure_logging
 from app.core.rate_limit import _RateLimitExceeded
@@ -70,6 +70,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(kyc.router, prefix=API_PREFIX)
 app.include_router(wallets.router, prefix=API_PREFIX)
+app.include_router(transactions.router, prefix=API_PREFIX)
 app.include_router(webhooks.router, prefix=API_PREFIX)
 app.include_router(admin.router, prefix=API_PREFIX)
 

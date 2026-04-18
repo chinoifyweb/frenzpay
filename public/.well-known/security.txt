@@ -1,0 +1,19 @@
+Contact: mailto:security@frenzpay.co
+Expires: 2027-04-17T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://app.frenzpay.co/.well-known/security.txt
+
+# Scope: *.frenzpay.co
+# Out of scope: Third-party services (Bridge, Flutterwave, Dojah, Cloudflare)
+
+# We welcome responsible disclosure. See our full security policy at:
+# https://app.frenzpay.co/security
+
+# Bug bounty: Contact security@frenzpay.co for reward details.
+# We follow a 90-day coordinated disclosure policy.
+
+# Please do NOT:
+# - Perform denial-of-service attacks
+# - Access or modify other users' data
+# - Use automated scanning tools without prior written approval
+# - Conduct social engineering attacks against staff or customers

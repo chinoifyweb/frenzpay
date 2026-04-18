@@ -24,12 +24,12 @@
 
 import cron from 'node-cron';
 import { logger } from '@frenzpay/logger';
-import { sessionCleanup } from './jobs/session-cleanup.js';
-import { sanctionsRefresh } from './jobs/sanctions-refresh.js';
-import { ongoingScreening } from './jobs/ongoing-screening.js';
-import { retentionSweep } from './jobs/retention-sweep.js';
-import { auditExport } from './jobs/audit-export.js';
-import { processMaturedLocks } from './jobs/process-matured-locks.js';
+import { sessionCleanup } from './jobs/session-cleanup';
+import { sanctionsRefresh } from './jobs/sanctions-refresh';
+import { ongoingScreening } from './jobs/ongoing-screening';
+import { retentionSweep } from './jobs/retention-sweep';
+import { auditExport } from './jobs/audit-export';
+import { processMaturedLocks } from './jobs/process-matured-locks';
 
 interface Job {
   name: string;
