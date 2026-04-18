@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { Menu, X, ChevronDown, MessageCircle, Download } from "lucide-react";
+import { Menu, X, ChevronDown, MessageCircle, LogIn } from "lucide-react";
 
 const WHATSAPP_LINK = "https://wa.me/12365997663";
 
@@ -89,17 +89,22 @@ export function Navbar() {
           </nav>
 
           {/* Desktop CTAs */}
-          <div className="hidden lg:flex items-center gap-3">
+          <div className="hidden lg:flex items-center gap-2">
             <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 rounded-lg hover:bg-green-50 dark:hover:bg-green-500/10 transition-all">
+              aria-label="Chat with support on WhatsApp"
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-green-600 dark:hover:text-green-400 rounded-lg hover:bg-green-50 dark:hover:bg-green-500/10 transition-all">
               <MessageCircle className="w-4 h-4" />
               Support
             </a>
-            <a href="#download"
+            <Link href="/login"
+              className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 rounded-lg border border-gray-200 dark:border-white/15 hover:border-green-500 dark:hover:border-green-400 hover:text-green-600 dark:hover:text-green-400 transition-all">
+              <LogIn className="w-4 h-4" />
+              Log in
+            </Link>
+            <Link href="/signup"
               className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold bg-green-500 hover:bg-green-600 text-white rounded-xl shadow-lg shadow-green-500/20 hover:shadow-green-500/30 transition-all">
-              <Download className="w-4 h-4" />
-              Download App
-            </a>
+              Sign up
+            </Link>
           </div>
 
           {/* Mobile toggle */}
@@ -140,15 +145,19 @@ export function Navbar() {
             )
           )}
           <div className="pt-3 border-t border-gray-100 dark:border-white/10 flex flex-col gap-2">
-            <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer"
+            <Link href="/login" onClick={() => setMobileOpen(false)}
               className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium border border-gray-200 dark:border-white/20 text-gray-700 dark:text-gray-300 rounded-xl">
-              <MessageCircle className="w-4 h-4" />
-              Chat on WhatsApp
-            </a>
-            <a href="#download" onClick={() => setMobileOpen(false)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-green-500 text-white rounded-xl">
-              <Download className="w-4 h-4" />
-              Download App
+              <LogIn className="w-4 h-4" />
+              Log in
+            </Link>
+            <Link href="/signup" onClick={() => setMobileOpen(false)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-semibold bg-green-500 text-white rounded-xl shadow-lg shadow-green-500/20">
+              Sign up — it&apos;s free
+            </Link>
+            <a href={WHATSAPP_LINK} target="_blank" rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 px-4 py-2 text-xs font-medium text-gray-500 dark:text-gray-400 rounded-xl hover:text-green-600 dark:hover:text-green-400">
+              <MessageCircle className="w-3.5 h-3.5" />
+              Or chat with us on WhatsApp
             </a>
           </div>
         </div>
