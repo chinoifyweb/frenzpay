@@ -1,18 +1,56 @@
-import { Resend } from 'resend'
+// Email transport — Purelymail SMTP via nodemailer.
+//
+// Why nodemailer + SMTP instead of Resend? frenzpay.co is already verified
+// with Purelymail (SPF, DKIM, DMARC) from the existing Python backend. Using
+// Purelymail for the Next.js app too means one email provider across all
+// services, one rotation surface, and no second domain-verification cycle.
+//
+// Env (all loaded at call time so next build doesn't crash without them):
+//   SMTP_HOST      default: smtp.purelymail.com
+//   SMTP_PORT      default: 587                (STARTTLS, per Purelymail docs)
+//   SMTP_USERNAME  e.g. noreply@frenzpay.co
+//   SMTP_PASSWORD  Purelymail app password
+//
+// `resend.emails.send(...)` contract below is kept unchanged — the rest of
+// this file can send without knowing we swapped providers.
 
-// Lazy client so `next build` can import this module without RESEND_API_KEY set.
-// All call sites below keep using `resend.emails.send(...)` unchanged.
-let _resendClient: Resend | null = null
-function getResend(): Resend {
-  if (!_resendClient) _resendClient = new Resend(process.env.RESEND_API_KEY ?? '')
-  return _resendClient
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import nodemailer, { type Transporter } from 'nodemailer'
+
+let _transporter: Transporter | null = null
+function getTransporter(): Transporter {
+  if (_transporter) return _transporter
+  _transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST ?? 'smtp.purelymail.com',
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: Number(process.env.SMTP_PORT ?? 587) === 465, // STARTTLS on 587, implicit TLS on 465
+    auth: {
+      user: process.env.SMTP_USERNAME ?? '',
+      pass: process.env.SMTP_PASSWORD ?? '',
+    },
+    // Keep connection reuse so repeated sends in a request are cheap
+    pool: true,
+    maxConnections: 5,
+  })
+  return _transporter
 }
-const resend = new Proxy({} as Resend, {
-  get(_t, prop: string | symbol) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (getResend() as any)[prop as string]
+
+// Shim that preserves the old `resend.emails.send({ from, to, subject, html, text? })` call
+// shape that every function below uses. Returns nodemailer's sendMail result.
+interface SendArgs { from: string; to: string | string[]; subject: string; html: string; text?: string }
+const resend = {
+  emails: {
+    send: async (args: SendArgs) => {
+      return getTransporter().sendMail({
+        from: args.from,
+        to: args.to,
+        subject: args.subject,
+        html: args.html,
+        text: args.text,
+      })
+    },
   },
-})
+}
 
 // Domain emails — all sending from verified frenzpay.co domain
 const FROM_EMAIL = 'Frenz Pay <noreply@frenzpay.co>'

@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { Resend } from 'resend'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import nodemailer from 'nodemailer'
 
-// Lazy client — see apps/web/src/lib/email.ts for the same pattern.
-let _resend: Resend | null = null
-function resendClient(): Resend {
-  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY ?? '')
-  return _resend
-}
-const resend = new Proxy({} as Resend, {
-  get(_t, prop: string | symbol) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (resendClient() as any)[prop as string]
-  },
-})
+// This route was originally wired to Resend's inbound-email forwarding. We've
+// moved to Purelymail SMTP; the route stays for backward compatibility (in
+// case any webhook URL is still registered anywhere) but forwards via SMTP.
 const FORWARD_TO = 'chinoify04@gmail.com'
+
+function sendMail(args: { from: string; to: string; subject: string; html?: string; text?: string; replyTo?: string }) {
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST ?? 'smtp.purelymail.com',
+    port: Number(process.env.SMTP_PORT ?? 587),
+    secure: Number(process.env.SMTP_PORT ?? 587) === 465,
+    auth: { user: process.env.SMTP_USERNAME ?? '', pass: process.env.SMTP_PASSWORD ?? '' },
+  })
+  return transporter.sendMail(args)
+}
+
+// Minimal back-compat shim: let the existing route body keep its
+// `resend.emails.send(...)` calls without a larger rewrite.
+const resend = {
+  emails: {
+    send: async (args: { from: string; to: string; subject: string; html?: string; text?: string; replyTo?: string }) => sendMail(args),
+  },
+}
 
 export async function POST(request: NextRequest) {
   try {
