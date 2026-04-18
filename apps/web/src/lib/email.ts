@@ -1,6 +1,18 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy client so `next build` can import this module without RESEND_API_KEY set.
+// All call sites below keep using `resend.emails.send(...)` unchanged.
+let _resendClient: Resend | null = null
+function getResend(): Resend {
+  if (!_resendClient) _resendClient = new Resend(process.env.RESEND_API_KEY ?? '')
+  return _resendClient
+}
+const resend = new Proxy({} as Resend, {
+  get(_t, prop: string | symbol) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (getResend() as any)[prop as string]
+  },
+})
 
 // Domain emails — all sending from verified frenzpay.co domain
 const FROM_EMAIL = 'Frenz Pay <noreply@frenzpay.co>'

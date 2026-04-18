@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -76,7 +77,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
   );
 }
 
-export default function ReceivePage() {
+function ReceivePageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currency = (searchParams.get('currency') ?? 'USD').toUpperCase();
@@ -306,5 +307,16 @@ export default function ReceivePage() {
         </>
       )}
     </div>
+  );
+}
+
+// Client components using useSearchParams() require a <Suspense> boundary
+// so Next can skip prerender. This wrapper provides that boundary.
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export default function ReceivePage() {
+  return (
+    <Suspense>
+      <ReceivePageInner />
+    </Suspense>
   );
 }

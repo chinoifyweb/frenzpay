@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+
+import { useCallback, useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -95,7 +96,7 @@ function uuidv4(): string {
   });
 }
 
-export default function SendPage() {
+function SendPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialCurrency = (searchParams.get('currency') as Currency) ?? 'USD';
@@ -542,5 +543,16 @@ export default function SendPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+// Client components using useSearchParams() require a <Suspense> boundary
+// so Next can skip prerender. This wrapper provides that boundary.
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export default function SendPage() {
+  return (
+    <Suspense>
+      <SendPageInner />
+    </Suspense>
   );
 }

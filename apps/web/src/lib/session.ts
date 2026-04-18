@@ -27,10 +27,12 @@ import {
 } from '@frenzpay/auth/session';
 import { redis } from './redis';
 
-const SESSION_SECRET = process.env.SESSION_SECRET!;
-
-if (!SESSION_SECRET) {
-  throw new Error('SESSION_SECRET env var is required');
+// Lazy env read so `next build` can collect page data without this set.
+// Throws on first actual use if still missing at request time.
+function getSessionSecret(): string {
+  const v = process.env.SESSION_SECRET;
+  if (!v) throw new Error('SESSION_SECRET env var is required at runtime');
+  return v;
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ export async function createSession(input: CreateSessionInput): Promise<string> 
     absoluteExpiry: stored.absoluteExpiry,
   };
 
-  return sealSession(cookie, SESSION_SECRET);
+  return sealSession(cookie, getSessionSecret());
 }
 
 // ─── Read ─────────────────────────────────────────────────────────────────────
@@ -98,7 +100,7 @@ export async function getSession(): Promise<{ sid: string; session: StoredSessio
   const raw = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!raw) return null;
 
-  const cookie = await unsealSession(raw, SESSION_SECRET);
+  const cookie = await unsealSession(raw, getSessionSecret());
   if (!cookie) return null;
 
   // Quick expiry check without Redis hit

@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
+// Lazy client — see apps/web/src/lib/email.ts for the same pattern.
+let _resend: Resend | null = null
+function resendClient(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY ?? '')
+  return _resend
+}
+const resend = new Proxy({} as Resend, {
+  get(_t, prop: string | symbol) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (resendClient() as any)[prop as string]
+  },
+})
 const FORWARD_TO = 'chinoify04@gmail.com'
 
 export async function POST(request: NextRequest) {
