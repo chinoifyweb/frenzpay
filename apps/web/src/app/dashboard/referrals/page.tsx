@@ -92,7 +92,7 @@ export default function ReferralsPage() {
 
   const handleShareTwitter = () => {
     const text = encodeURIComponent(
-      `Get paid globally and withdraw in USDT with @FrenzPay! Use my referral link to sign up:`
+      `Get paid globally and withdraw in USDT or to your Naira bank account with @FrenzPay! Use my referral link to sign up:`
     )
     const url = encodeURIComponent(SHARE_LINK)
     window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank')

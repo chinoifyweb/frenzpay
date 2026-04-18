@@ -87,8 +87,8 @@ export default function AboutPage() {
                 We believe that where you live should not determine how easily
                 you can get paid for your work. Frenz Pay eliminates the friction
                 of cross-border payments by giving you virtual bank accounts in
-                major currencies and the ability to withdraw in USDT — all from a
-                single, clean dashboard.
+                major currencies and the ability to withdraw in USDT or directly to
+                your Naira account — all from a single, clean dashboard.
               </p>
               <p className="mt-4 text-base leading-relaxed text-muted-foreground">
                 No more waiting days for wire transfers. No more losing 5-10% to

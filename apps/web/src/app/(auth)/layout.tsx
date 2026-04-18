@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     template: '%s | Frenz Pay',
     default: 'Frenz Pay',
   },
-  description: 'Get Paid Globally, Withdraw in USDT',
+  description: 'Get paid globally, withdraw in USDT or to any Nigerian bank account.',
 }
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
@@ -28,11 +28,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/90 to-secondary items-center justify-center p-12">
         <div className="max-w-md text-white">
           <h2 className="text-3xl font-bold mb-4">
-            Get Paid Globally, Withdraw in USDT
+            Get paid globally. Withdraw in USDT or Naira.
           </h2>
           <p className="text-white/80 mb-8">
             Join thousands of freelancers and remote workers who use Frenz Pay to
-            receive international payments.
+            receive international payments — and cash out however suits them.
           </p>
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -45,7 +45,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <span className="text-white font-semibold">&#10003;</span>
               </div>
-              <span>Instant USDT withdrawals</span>
+              <span>Withdraw to USDT (TRC-20/ERC-20) or any Nigerian bank</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
