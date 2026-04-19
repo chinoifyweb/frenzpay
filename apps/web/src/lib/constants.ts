@@ -61,6 +61,7 @@ export const NAV_ITEMS = {
     { label: 'Fraud Flags', href: '/admin/flags', icon: 'AlertTriangle' },
     { label: 'Transactions', href: '/admin/transactions', icon: 'ArrowUpDown' },
     { label: 'Withdrawals', href: '/admin/withdrawals', icon: 'ArrowUpRight' },
+    { label: 'Providers', href: '/admin/providers', icon: 'Zap' },
     { label: 'Settings', href: '/admin/settings', icon: 'Settings' },
   ],
 }
