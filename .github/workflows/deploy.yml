@@ -65,6 +65,7 @@ jobs:
             apps/web/public \
             packages/db/prisma \
             ecosystem.config.js \
+            infra \
             scripts
           ls -lh frenzpay-release.tar.gz
 

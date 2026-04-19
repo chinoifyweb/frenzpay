@@ -110,6 +110,14 @@ if [[ "${FRENZPAY_RUN_MIGRATIONS:-0}" == "1" ]]; then
   fi
 fi
 
+# Install the authoritative PM2 config at a stable path. PM2 remembers process
+# definitions by `cwd`, so the config itself can live outside the release dir.
+# This avoids the old re-export shim that broke when `infra/pm2/` moved.
+if [[ -f "$RELEASE_DIR/infra/pm2/ecosystem.config.js" ]]; then
+  cp "$RELEASE_DIR/infra/pm2/ecosystem.config.js" "$APP_DIR/ecosystem.config.js"
+  log "refreshed $APP_DIR/ecosystem.config.js from release"
+fi
+
 # Swap the current symlink atomically
 PREVIOUS_TARGET=$(readlink "$APP_DIR/app" 2>/dev/null || echo "")
 log "switching symlink: app -> $TIMESTAMP"
