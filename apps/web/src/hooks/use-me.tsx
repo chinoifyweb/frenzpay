@@ -61,8 +61,14 @@ export function MeProvider({ children }: { children: ReactNode }) {
         return
       }
       if (!res.ok) throw new Error(`Failed to load profile (${res.status})`)
-      const json = (await res.json()) as Me
-      setMe(json)
+      const json = (await res.json()) as { user?: Me } | Me
+      // /api/auth/me wraps the user in { user: {...} }; accept either shape so
+      // a future flattening of that endpoint doesn't break this hook.
+      const user: Me | null =
+        json && typeof json === 'object' && 'user' in json && json.user
+          ? json.user
+          : ((json as Me).email ? (json as Me) : null)
+      setMe(user)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load profile')
     } finally {
