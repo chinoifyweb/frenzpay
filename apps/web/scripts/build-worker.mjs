@@ -56,15 +56,17 @@ const external = [
   '@frenzpay/logger',
   '@frenzpay/providers',
   '@frenzpay/validators',
-  // Heavy / native deps best left unbundled
+  // Heavy / native deps best left unbundled — Next's standalone tracing pulled
+  // these into standalone/node_modules/ via /api routes that import them.
   '@prisma/client',
   '.prisma/client',
   '@node-rs/argon2',
   'ioredis',
-  'node-cron',
   'nodemailer',
   'pino',
   'pino-pretty',
+  // node-cron is NOT traced by Next (nothing under /app imports it), so it
+  // must be inlined to avoid ERR_MODULE_NOT_FOUND at runtime.
 ];
 
 const result = await build({
