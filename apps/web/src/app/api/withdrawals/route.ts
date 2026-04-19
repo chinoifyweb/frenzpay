@@ -2,9 +2,9 @@
  * GET /api/withdrawals
  * List the authenticated user's withdrawals with pagination.
  *
- * The old POST handler (which initiated USDT withdrawals via raw SQL) has been
- * replaced by /api/withdrawals/ngn for NGN payouts via Paystack. Additional
- * withdrawal corridors (USDC on-chain, GBP via Bridge) will follow.
+ * NB: This is a read-only listing. The NGN payout initiator has been removed
+ * alongside the Paystack client; a replacement rail (Bridge NGN or Yellow Card)
+ * needs to be wired up before users can initiate new NGN withdrawals.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';

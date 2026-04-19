@@ -1,15 +1,10 @@
 /**
  * POST /api/admin/providers/test
  *
- * Body: { provider: 'bridge' | 'paystack' }
+ * Body: { provider: 'bridge' }
  *
  * Pings a cheap read-only endpoint on the given provider to confirm that the
- * configured API key authenticates. Returns:
- *   - ok: boolean
- *   - statusCode: HTTP status we got back
- *   - latencyMs
- *   - message: short human-readable result
- *   - sample: a tiny, non-sensitive snippet (e.g. "received 32 banks")
+ * configured API key authenticates. Returns ok/statusCode/latencyMs/message.
  *
  * Never returns provider response bodies wholesale — they may contain customer
  * PII. We only extract a count / a single well-known field for confirmation.
@@ -23,7 +18,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 
 const Schema = z.object({
-  provider: z.enum(['bridge', 'paystack']),
+  provider: z.enum(['bridge']),
 });
 
 interface TestResult {
@@ -100,71 +95,6 @@ async function testBridge(): Promise<TestResult> {
   }
 }
 
-async function testPaystack(): Promise<TestResult> {
-  const apiKey = process.env['PAYSTACK_SECRET_KEY'];
-  const base = process.env['PAYSTACK_API_BASE'] ?? 'https://api.paystack.co';
-
-  if (!apiKey) {
-    return {
-      ok: false,
-      statusCode: null,
-      latencyMs: 0,
-      message: 'PAYSTACK_SECRET_KEY is not configured on the server.',
-    };
-  }
-
-  const started = Date.now();
-  try {
-    const res = await fetch(`${base}/bank?country=nigeria&perPage=1`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      signal: AbortSignal.timeout(10_000),
-    });
-    const latencyMs = Date.now() - started;
-
-    if (res.status === 401 || res.status === 403) {
-      return {
-        ok: false,
-        statusCode: res.status,
-        latencyMs,
-        message: 'Paystack rejected the key. Verify PAYSTACK_SECRET_KEY matches sk_live_... or sk_test_... from your Paystack dashboard.',
-      };
-    }
-    if (res.status >= 200 && res.status < 300) {
-      let count: number | null = null;
-      try {
-        const json = (await res.json()) as { status?: boolean; data?: unknown[] };
-        if (Array.isArray(json.data)) count = json.data.length;
-      } catch { /* ignore */ }
-      return {
-        ok: true,
-        statusCode: res.status,
-        latencyMs,
-        message: 'Paystack authentication succeeded.',
-        sample: count !== null ? `API returned ${count} bank record(s) on the sample page.` : undefined,
-      };
-    }
-    return {
-      ok: false,
-      statusCode: res.status,
-      latencyMs,
-      message: `Paystack responded with HTTP ${res.status}.`,
-    };
-  } catch (err) {
-    const latencyMs = Date.now() - started;
-    const msg = err instanceof Error ? err.message : String(err);
-    return {
-      ok: false,
-      statusCode: null,
-      latencyMs,
-      message: `Network error contacting Paystack: ${msg}`,
-    };
-  }
-}
-
 export async function POST(req: NextRequest) {
   const { session } = await requireSession();
   if (session.role !== 'admin') {
@@ -187,8 +117,16 @@ export async function POST(req: NextRequest) {
   const { provider } = parsed.data;
 
   let result: TestResult;
-  if (provider === 'bridge') result = await testBridge();
-  else result = await testPaystack();
+  if (provider === 'bridge') {
+    result = await testBridge();
+  } else {
+    result = {
+      ok: false,
+      statusCode: null,
+      latencyMs: 0,
+      message: `No test implemented for provider '${provider as string}'`,
+    };
+  }
 
   return NextResponse.json({ provider, ...result });
 }

@@ -700,19 +700,6 @@ model FlutterwaveWebhookEvent {
   @@map("flutterwave_webhook_events")
 }
 
-// Deduplication for Paystack webhooks (NGN payouts)
-model PaystackWebhookEvent {
-  id          String   @id // Paystack's event reference
-  eventType   String   @map("event_type")
-  payload     Json     @db.JsonB
-  processedAt DateTime? @map("processed_at")
-  error       String?
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  @@index([eventType])
-  @@map("paystack_webhook_events")
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // VIRTUAL CARDS
 // ─────────────────────────────────────────────────────────────────────────────

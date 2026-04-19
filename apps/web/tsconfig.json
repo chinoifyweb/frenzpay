@@ -72,9 +72,6 @@
       "@frenzpay/providers/bridge": [
         "../../packages/providers/src/bridge.ts"
       ],
-      "@frenzpay/providers/paystack": [
-        "../../packages/providers/src/paystack.ts"
-      ],
       "@frenzpay/providers/bridge-cards": [
         "../../packages/providers/src/bridge-cards.ts"
       ]

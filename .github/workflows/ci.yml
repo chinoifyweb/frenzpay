@@ -155,7 +155,6 @@ jobs:
         env:
           # Build-time env for Next.js — public vars only, never secrets
           NEXT_PUBLIC_APP_URL: https://app.frenzpay.co
-          NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY: pk_live_placeholder
           NEXT_PUBLIC_TURNSTILE_SITE_KEY: placeholder
 
       - name: Upload web build artifact

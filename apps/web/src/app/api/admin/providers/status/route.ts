@@ -24,12 +24,12 @@ interface KeyInfo {
   configured: boolean;
   /** Last 4 chars of the key, for "did my rotation land?" confirmation */
   tail: string | null;
-  /** Rough guess at key type (sk_live / sk_test / other) — live/test only for Paystack */
+  /** Reserved for provider-specific key-mode hints (e.g. sk_live vs sk_test). */
   mode: 'live' | 'test' | 'unknown' | null;
 }
 
 interface ProviderStatus {
-  id: 'paystack' | 'bridge' | 'dojah' | 'sentry';
+  id: 'bridge' | 'dojah' | 'sentry';
   name: string;
   purpose: string;
   /** Where the admin should go to get / rotate these keys */
@@ -54,22 +54,12 @@ function maskTail(value: string | undefined): string | null {
   return value.slice(-4);
 }
 
-/** Paystack keys start with `sk_live_` or `sk_test_` — detect which. */
-function paystackMode(value: string | undefined): 'live' | 'test' | 'unknown' | null {
-  if (!value) return null;
-  if (value.startsWith('sk_live_')) return 'live';
-  if (value.startsWith('sk_test_')) return 'test';
-  return 'unknown';
-}
-
 export async function GET() {
   const { session } = await requireSession();
   if (session.role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const paystackKey = process.env['PAYSTACK_SECRET_KEY'];
-  const paystackWebhook = process.env['PAYSTACK_WEBHOOK_SECRET'];
   const bridgeKey = process.env['BRIDGE_API_KEY'];
   const bridgeWebhook = process.env['BRIDGE_WEBHOOK_SECRET'];
   const dojahAppId = process.env['DOJAH_APP_ID'];
@@ -77,31 +67,6 @@ export async function GET() {
   const sentryDsn = process.env['SENTRY_DSN'];
 
   const providers: ProviderStatus[] = [
-    {
-      id: 'paystack',
-      name: 'Paystack',
-      purpose: 'Nigerian bank payouts (NGN withdrawals)',
-      dashboardUrl: 'https://dashboard.paystack.com/#/settings/developers',
-      status: paystackKey && paystackWebhook ? 'ok' : paystackKey || paystackWebhook ? 'partial' : 'missing',
-      blocks: ['NGN withdrawals to any Nigerian bank', 'Webhook-confirmed payouts'],
-      testable: !!paystackKey,
-      keys: [
-        {
-          name: 'PAYSTACK_SECRET_KEY',
-          description: 'sk_live_... for production, sk_test_... for staging',
-          configured: !!paystackKey,
-          tail: maskTail(paystackKey),
-          mode: paystackMode(paystackKey),
-        },
-        {
-          name: 'PAYSTACK_WEBHOOK_SECRET',
-          description: 'Signing secret for incoming webhooks. Paystack uses the same secret key; set to match.',
-          configured: !!paystackWebhook,
-          tail: maskTail(paystackWebhook),
-          mode: null,
-        },
-      ],
-    },
     {
       id: 'bridge',
       name: 'Bridge',

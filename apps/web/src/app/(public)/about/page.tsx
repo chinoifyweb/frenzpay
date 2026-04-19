@@ -30,7 +30,7 @@ const team = [
   {
     name: "Adebayo Ogunlesi",
     role: "Co-founder & CEO",
-    bio: "Former fintech engineer at Paystack. Passionate about financial inclusion across Africa.",
+    bio: "Former fintech engineer. Passionate about financial inclusion across Africa.",
   },
   {
     name: "Chioma Nwosu",

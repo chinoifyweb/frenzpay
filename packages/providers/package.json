@@ -17,10 +17,6 @@
     "./bridge-cards": {
       "types": "./dist/bridge-cards.d.ts",
       "default": "./src/bridge-cards.ts"
-    },
-    "./paystack": {
-      "types": "./dist/paystack.d.ts",
-      "default": "./src/paystack.ts"
     }
   },
   "scripts": {

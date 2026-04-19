@@ -85,25 +85,24 @@ const nextConfig: NextConfig = {
             key: "Content-Security-Policy",
             value: [
               "default-src 'self'",
-              // Scripts: self + Paystack inline checkout + Cloudflare Turnstile
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.paystack.co https://challenges.cloudflare.com",
+              // Scripts: self + Cloudflare Turnstile
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' blob: data: https://logo.clearbit.com",
-              // Outbound XHR/fetch: our own API + payment/KYC providers + observability
+              // Outbound XHR/fetch: our own API + provider + observability hosts
               [
                 "connect-src 'self'",
                 "https://api.frenzpay.co",
-                "https://api.paystack.co",
                 "https://api.bridge.xyz",
                 "https://api.dojah.io",
                 "https://*.ingest.sentry.io",
               ].join(" "),
-              // iFrames: Paystack inline, Bridge card iframe, Turnstile
-              "frame-src https://js.paystack.co https://checkout.paystack.com https://*.bridge.xyz https://challenges.cloudflare.com",
+              // iFrames: Bridge card iframe, Turnstile
+              "frame-src https://*.bridge.xyz https://challenges.cloudflare.com",
               "font-src 'self' data:",
               "object-src 'none'",
               "base-uri 'self'",
-              "form-action 'self' https://checkout.paystack.com",
+              "form-action 'self'",
               "frame-ancestors 'none'",
             ].join("; "),
           },

@@ -67,7 +67,6 @@ const SYSTEM_ACCOUNTS = [
   // Bank/custodian omnibus accounts
   { name: 'bridge_usd_omnibus', currency: 'USDC' },
   { name: 'flutterwave_ngn_float', currency: 'NGN' },
-  { name: 'paystack_ngn_float', currency: 'NGN' },
 
   // Platform fee collection
   { name: 'fees_usd', currency: 'USD' },
