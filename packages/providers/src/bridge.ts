@@ -71,6 +71,25 @@ export interface BridgeWebhookPayload {
   };
 }
 
+// ─── Production guard ────────────────────────────────────────────────────────
+
+/**
+ * Refuse to fall through to stubs in production. Stubbed Bridge responses
+ * mean no real USD virtual account is created and no USDC actually moves —
+ * looks fine in UI, catastrophic in prod. Set FRENZPAY_ALLOW_DEV_STUBS=1 to
+ * explicitly opt in if you really know what you're doing.
+ */
+function refuseStubInProduction(what: string): void {
+  const env = process.env['NODE_ENV'];
+  const allowDevStubs = process.env['FRENZPAY_ALLOW_DEV_STUBS'] === '1';
+  if (env === 'production' && !allowDevStubs) {
+    throw new Error(
+      `[bridge] Missing BRIDGE_API_KEY in production — refusing to ${what}. ` +
+      `Set BRIDGE_API_KEY in /home/frenzpay/shared/.env.production.`,
+    );
+  }
+}
+
 // ─── Stub helpers (dev mode) ─────────────────────────────────────────────────
 
 function stubCustomerId(internalUserId: string): string {
@@ -128,6 +147,7 @@ export async function createBridgeCustomer(
   const base = process.env['BRIDGE_API_BASE'] ?? DEFAULT_BASE;
 
   if (!apiKey) {
+    refuseStubInProduction('return a stub Bridge customer (no KYC happened)');
     console.warn('[bridge] Missing BRIDGE_API_KEY — returning stub customer');
     return { customerId: stubCustomerId(payload.internalUserId), status: 'active', rawResponse: { stub: true } };
   }
@@ -168,6 +188,7 @@ export async function createBridgeVirtualAccount(
   const base = process.env['BRIDGE_API_BASE'] ?? DEFAULT_BASE;
 
   if (!apiKey) {
+    refuseStubInProduction('return a stub virtual USD account');
     console.warn('[bridge] Missing BRIDGE_API_KEY — returning stub virtual account');
     return stubVirtualAccount(customerId);
   }
@@ -217,6 +238,7 @@ export async function getBridgeVirtualAccount(
   const base = process.env['BRIDGE_API_BASE'] ?? DEFAULT_BASE;
 
   if (!apiKey) {
+    refuseStubInProduction('return a stub virtual-account status');
     return { stub: true, id: virtualAccountId };
   }
 

@@ -65,6 +65,27 @@ const STUB_BANKS: PaystackBank[] = [
   { name: 'Fidelity Bank', code: '070', country: 'Nigeria', currency: 'NGN', slug: 'fidelity-bank', active: true },
 ];
 
+/**
+ * Fail loud in production when a required key is missing.
+ *
+ * In dev/test, missing Paystack creds silently fall back to deterministic
+ * stubs so the full NGN-withdrawal flow works offline. In production that
+ * behaviour would silently ship fake bank lists, fake account resolutions,
+ * and "successful" transfers that never actually move money — exactly the
+ * kind of bug that looks fine in QA and is catastrophic in prod.
+ */
+function refuseStubInProduction(what: string): void {
+  const env = process.env['NODE_ENV'];
+  const allowDevStubs = process.env['FRENZPAY_ALLOW_DEV_STUBS'] === '1';
+  if (env === 'production' && !allowDevStubs) {
+    throw new Error(
+      `[paystack] Missing PAYSTACK_SECRET_KEY in production — refusing to ${what}. ` +
+      `Set PAYSTACK_SECRET_KEY in /home/frenzpay/shared/.env.production, or ` +
+      `export FRENZPAY_ALLOW_DEV_STUBS=1 to explicitly opt in to stubs (not recommended).`,
+    );
+  }
+}
+
 function stubAccountName(accountNumber: string): string {
   // Deterministic so the same account always resolves to the same name
   const h = createHmac('sha256', 'stub').update(accountNumber).digest('hex');
@@ -106,6 +127,7 @@ export async function listNigerianBanks(): Promise<PaystackBank[]> {
   const base = process.env['PAYSTACK_API_BASE'] ?? DEFAULT_BASE;
 
   if (!secretKey) {
+    refuseStubInProduction('return a stub bank list');
     console.warn('[paystack] Missing PAYSTACK_SECRET_KEY — returning stub bank list');
     return STUB_BANKS;
   }
@@ -135,6 +157,7 @@ export async function resolveNigerianAccount(
   }
 
   if (!secretKey) {
+    refuseStubInProduction('return a stub account resolution');
     console.warn('[paystack] Missing PAYSTACK_SECRET_KEY — returning stub account resolution');
     return { accountNumber, accountName: stubAccountName(accountNumber), bankCode };
   }
@@ -166,6 +189,7 @@ export async function createPaystackRecipient(
   const base = process.env['PAYSTACK_API_BASE'] ?? DEFAULT_BASE;
 
   if (!secretKey) {
+    refuseStubInProduction('return a stub recipient');
     console.warn('[paystack] Missing PAYSTACK_SECRET_KEY — returning stub recipient');
     return {
       recipientCode: `RCP_stub_${createHmac('sha256', 'stub').update(accountNumber).digest('hex').slice(0, 12)}`,
@@ -230,6 +254,7 @@ export async function initiatePaystackTransfer(params: {
   }
 
   if (!secretKey) {
+    refuseStubInProduction('return a stub transfer (no real money would move)');
     console.warn('[paystack] Missing PAYSTACK_SECRET_KEY — returning stub transfer');
     return {
       transferCode: `TRF_stub_${params.reference.slice(0, 12)}`,

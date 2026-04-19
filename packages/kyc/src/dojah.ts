@@ -13,6 +13,24 @@
 
 const DOJAH_BASE = 'https://api.dojah.io';
 
+/**
+ * Refuse to return a stub pass in production. Without DOJAH credentials, the
+ * BVN / NIN / liveness checks all return `{ verified: true, firstName: 'STUB' }`
+ * regardless of what the user submits — letting anyone "pass" KYC without
+ * actually verifying identity. That's a compliance-level bug. Fail loud.
+ */
+function refuseDojahStubInProduction(check: string): void {
+  const env = process.env['NODE_ENV'];
+  const allowDevStubs = process.env['FRENZPAY_ALLOW_DEV_STUBS'] === '1';
+  if (env === 'production' && !allowDevStubs) {
+    throw new Error(
+      `[dojah] Missing DOJAH_APP_ID / DOJAH_PRIVATE_KEY in production — ` +
+      `refusing to stub ${check}. Real identity verification is required. ` +
+      `Set both keys in /home/frenzpay/shared/.env.production.`,
+    );
+  }
+}
+
 export interface DojahBvnResult {
   verified: boolean;
   firstName?: string;
@@ -72,7 +90,8 @@ export async function verifyBvn(bvn: string, userId: string): Promise<DojahBvnRe
   const privateKey = process.env['DOJAH_PRIVATE_KEY'];
 
   if (!appId || !privateKey) {
-    // Dev/test stub — never used in production
+    refuseDojahStubInProduction('BVN verification');
+    // Dev/test stub — never used in production (guarded above)
     console.warn('[dojah] Missing credentials — returning stub BVN result (DEV ONLY)');
     return { verified: true, firstName: 'STUB', lastName: 'USER', raw: { stub: true } };
   }
@@ -116,6 +135,7 @@ export async function verifyNin(nin: string, _userId: string): Promise<DojahNinR
   const privateKey = process.env['DOJAH_PRIVATE_KEY'];
 
   if (!appId || !privateKey) {
+    refuseDojahStubInProduction('NIN verification');
     console.warn('[dojah] Missing credentials — returning stub NIN result (DEV ONLY)');
     return { verified: true, firstName: 'STUB', lastName: 'USER', raw: { stub: true } };
   }
@@ -157,6 +177,7 @@ export async function verifyLiveness(selfieBase64: string, _userId: string): Pro
   const privateKey = process.env['DOJAH_PRIVATE_KEY'];
 
   if (!appId || !privateKey) {
+    refuseDojahStubInProduction('selfie liveness verification');
     console.warn('[dojah] Missing credentials — returning stub liveness result (DEV ONLY)');
     return { verified: true, confidence: 0.99, raw: { stub: true } };
   }
