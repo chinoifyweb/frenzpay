@@ -58,7 +58,7 @@ module.exports = {
     },
     {
       name: 'frenzpay-worker',
-      script: path.join(STANDALONE_BASE, 'workers/cron.js'),
+      script: path.join(STANDALONE_BASE, 'workers/cron.mjs'),
       cwd: STANDALONE_BASE,
       instances: 1,
       exec_mode: 'fork',

@@ -22,7 +22,10 @@ const repoRoot = resolve(__dirname, '..');
 
 const STANDALONE = resolve(repoRoot, '.next/standalone/apps/web');
 const ENTRY = resolve(repoRoot, 'src/workers/cron.ts');
-const OUTFILE = resolve(STANDALONE, 'workers/cron.js');
+// ESM output (cron.ts uses top-level await). PM2 happily runs `node cron.mjs`.
+// We emit as `.cjs`-extension-but-ESM by keeping `.js` and emitting a package.json
+// sibling that flips the module type. Simpler: just use `.mjs`.
+const OUTFILE = resolve(STANDALONE, 'workers/cron.mjs');
 
 async function exists(p) {
   try { await access(p, constants.F_OK); return true; } catch { return false; }
@@ -69,7 +72,7 @@ const result = await build({
   outfile: OUTFILE,
   bundle: true,
   platform: 'node',
-  format: 'cjs',
+  format: 'esm',
   target: 'node22',
   sourcemap: 'linked',
   minify: false, // keep readable — this is a background process, perf ≠ size
