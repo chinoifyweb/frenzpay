@@ -1,9 +1,11 @@
 /**
  * PM2 ecosystem config for FrenzPay.
  *
- * Two processes:
- *   - frenzpay-web     : Next.js standalone server, 2 cluster workers on 127.0.0.1:3000
+ * Three processes:
+ *   - frenzpay-web     : Next.js standalone server, 2 cluster workers on 127.0.0.1:3200
  *   - frenzpay-worker  : node-cron scheduler (see apps/web/src/workers/cron.ts)
+ *   - frenzpay-admin   : separate Next.js admin app on 127.0.0.1:4001
+ *                        (apps/admin, talks to FastAPI backend at api.frenzpay.co)
  *
  * Deployment layout (atomic releases):
  *   /home/frenzpay/
@@ -55,6 +57,30 @@ module.exports = {
       time: true,
       max_restarts: 10,
       min_uptime: '10s',
+    },
+    {
+      // The admin app is still a pnpm monorepo-friendly build using
+      // `next start` because its standalone output misses a few pnpm
+      // transitive deps (styled-jsx/package.json) in this layout. Running
+      // `next start` from the build dir is simpler and equally fast.
+      name: 'frenzpay-admin',
+      script: 'node_modules/next/dist/bin/next',
+      args: 'start -p 4001 -H 127.0.0.1',
+      cwd: process.env.FRENZPAY_ADMIN_CWD || '/home/frenzpay/build-workspace/apps/admin',
+      instances: 1,
+      exec_mode: 'fork',
+      max_memory_restart: '400M',
+      env: {
+        NODE_ENV: 'production',
+        NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://api.frenzpay.co',
+      },
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: path.join(LOG_DIR, 'admin-error.log'),
+      out_file: path.join(LOG_DIR, 'admin-out.log'),
+      merge_logs: true,
+      time: true,
+      max_restarts: 10,
+      min_uptime: '30s',
     },
     {
       name: 'frenzpay-worker',
