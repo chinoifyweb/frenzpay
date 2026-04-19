@@ -5,11 +5,12 @@
  *
  * At-a-glance status of every external-provider integration. Shows whether
  * each key is set, a masked tail (last 4 chars) so rotations can be confirmed,
- * and a "Test" button for providers with a cheap read endpoint.
+ * lets an admin paste a new value (server-side only writes to .env +
+ * auto-reloads PM2), and provides a "Test" button for providers with a cheap
+ * read endpoint.
  *
- * No raw secrets ever reach the browser — the API only returns the last-4
- * digits and a boolean `configured`. Rotation requires SSH access to the box,
- * by design.
+ * Raw keys never travel back to the browser — the status API only returns
+ * last-4 + configured boolean. Saving is one-way: browser → server → .env.
  */
 
 import { useCallback, useEffect, useState } from 'react'
@@ -17,27 +18,23 @@ import { toast } from 'sonner'
 import {
   AlertCircle,
   CheckCircle2,
-  Copy,
+  Eye,
+  EyeOff,
   ExternalLink,
   Key as KeyIcon,
   Loader2,
-  Lock,
   RefreshCw,
+  Save,
   Shield,
   Zap,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 
 type ProviderId = 'paystack' | 'bridge' | 'dojah' | 'sentry'
 type ProviderStatusValue = 'ok' | 'partial' | 'missing'
@@ -69,6 +66,130 @@ interface TestResult {
   sample?: string
 }
 
+/**
+ * One editable row per key. Keeps its own edit/show/save state so sibling
+ * rows don't force remount on every keystroke.
+ */
+function KeyRow({ k, onSaved }: { k: KeyInfo; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false)
+  const [value, setValue] = useState('')
+  const [show, setShow] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    const trimmed = value.trim()
+    if (trimmed.length < 8) {
+      toast.error('Value looks too short. Paste the full key.')
+      return
+    }
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/providers/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: k.name, value: trimmed }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? `Save failed (${res.status})`)
+      toast.success(`${k.name} saved. PM2 reloading…`)
+      setValue('')
+      setEditing(false)
+      // The server schedules a reload ~750ms after responding — wait a bit
+      // before refreshing so the new status reflects the new key.
+      setTimeout(onSaved, 6000)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-3 min-w-0">
+          <KeyIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <code className="font-mono text-sm font-medium">{k.name}</code>
+              {k.mode === 'live' && (
+                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 text-[10px] dark:bg-emerald-500/15 dark:text-emerald-400">
+                  LIVE
+                </Badge>
+              )}
+              {k.mode === 'test' && (
+                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-[10px] dark:bg-yellow-500/15 dark:text-yellow-400">
+                  TEST
+                </Badge>
+              )}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">{k.description}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {k.configured ? (
+            <span className="font-mono text-xs text-muted-foreground">
+              ••••{k.tail ?? '••••'}
+            </span>
+          ) : (
+            <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-400">
+              Not set
+            </Badge>
+          )}
+          {!editing && (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              {k.configured ? 'Replace' : 'Set'}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {editing && (
+        <div className="space-y-2">
+          <div className="relative">
+            <Input
+              type={show ? 'text' : 'password'}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder={k.configured ? 'Paste the new value' : 'Paste the key'}
+              className="pr-10 font-mono text-sm"
+              autoFocus
+              onKeyDown={(e) => e.key === 'Enter' && !saving && save()}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="absolute right-2 top-1/2 -translate-y-1/2"
+              onClick={() => setShow((s) => !s)}
+              aria-label={show ? 'Hide' : 'Show'}
+            >
+              {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Value is sent directly to the server, written to .env with mode 0600, and the app auto-reloads. Never stored in the database.
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <Button size="sm" variant="ghost" onClick={() => { setEditing(false); setValue('') }} disabled={saving}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={save} disabled={saving || value.trim().length < 8}>
+                {saving ? (
+                  <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />Saving</>
+                ) : (
+                  <><Save className="mr-1.5 h-3.5 w-3.5" />Save</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const STATUS_TONE: Record<ProviderStatusValue, { badge: string; label: string; icon: React.ComponentType<{ className?: string }> }> = {
   ok: { badge: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400', label: 'Configured', icon: CheckCircle2 },
   partial: { badge: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-400', label: 'Partial', icon: AlertCircle },
@@ -81,7 +202,6 @@ export default function AdminProvidersPage() {
   const [error, setError] = useState<string | null>(null)
   const [testing, setTesting] = useState<ProviderId | null>(null)
   const [testResults, setTestResults] = useState<Record<ProviderId, TestResult | undefined>>({} as Record<ProviderId, TestResult | undefined>)
-  const [rotationFor, setRotationFor] = useState<ProviderStatus | null>(null)
 
   const fetchStatus = useCallback(async () => {
     setLoading(true)
@@ -119,15 +239,6 @@ export default function AdminProvidersPage() {
     }
   }, [])
 
-  async function copyText(text: string, label: string) {
-    try {
-      await navigator.clipboard.writeText(text)
-      toast.success(`${label} copied`)
-    } catch {
-      toast.error('Copy failed')
-    }
-  }
-
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
@@ -146,7 +257,7 @@ export default function AdminProvidersPage() {
       <Alert>
         <Shield className="h-4 w-4" />
         <AlertDescription>
-          Provider keys are stored in a server-side <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code> file, not in the database. Only the last 4 characters are shown here, so an admin-session hijack doesn&apos;t leak the raw secrets. Rotating a key requires SSH access to the server &mdash; that friction is intentional.
+          Keys are saved to a server-side <code className="rounded bg-muted px-1 py-0.5 text-xs">.env</code> file (never the database), and only the last 4 characters are ever shown back. Saving triggers an automatic zero-downtime PM2 reload &mdash; the new key is live in about 5 seconds.
         </AlertDescription>
       </Alert>
 
@@ -207,10 +318,6 @@ export default function AdminProvidersPage() {
                           <ExternalLink className="ml-1.5 h-3 w-3" />
                         </a>
                       </Button>
-                      <Button size="sm" onClick={() => setRotationFor(p)}>
-                        <Lock className="mr-1.5 h-3.5 w-3.5" />
-                        Rotate
-                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -219,38 +326,7 @@ export default function AdminProvidersPage() {
                   {/* Keys */}
                   <div className="space-y-2">
                     {p.keys.map((k) => (
-                      <div key={k.name} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="flex items-start gap-3 min-w-0">
-                          <KeyIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <code className="font-mono text-sm font-medium">{k.name}</code>
-                              {k.mode === 'live' && (
-                                <Badge variant="secondary" className="bg-emerald-100 text-emerald-800 text-[10px] dark:bg-emerald-500/15 dark:text-emerald-400">
-                                  LIVE
-                                </Badge>
-                              )}
-                              {k.mode === 'test' && (
-                                <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-[10px] dark:bg-yellow-500/15 dark:text-yellow-400">
-                                  TEST
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="mt-0.5 text-xs text-muted-foreground">{k.description}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {k.configured ? (
-                            <span className="font-mono text-xs text-muted-foreground">
-                              ••••{k.tail ?? '••••'}
-                            </span>
-                          ) : (
-                            <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-400">
-                              Not set
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
+                      <KeyRow key={k.name} k={k} onSaved={() => void fetchStatus()} />
                     ))}
                   </div>
 
@@ -294,75 +370,6 @@ export default function AdminProvidersPage() {
           })}
         </div>
       ) : null}
-
-      {/* Rotation instructions modal */}
-      <Dialog open={!!rotationFor} onOpenChange={(open) => !open && setRotationFor(null)}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Rotate {rotationFor?.name} keys</DialogTitle>
-          </DialogHeader>
-          {rotationFor && (
-            <div className="space-y-4 text-sm">
-              <p>
-                For security, provider secrets are not stored in the database. Rotation happens on the server itself.
-              </p>
-
-              <div>
-                <p className="mb-2 font-medium">1. Get the new key from {rotationFor.name}</p>
-                <Button size="sm" variant="outline" asChild>
-                  <a href={rotationFor.dashboardUrl} target="_blank" rel="noopener noreferrer">
-                    Open {rotationFor.name} dashboard
-                    <ExternalLink className="ml-1.5 h-3 w-3" />
-                  </a>
-                </Button>
-              </div>
-
-              <div>
-                <p className="mb-2 font-medium">2. SSH to the server</p>
-                <div className="flex items-center gap-2 rounded-md border bg-muted px-3 py-2 font-mono text-xs">
-                  <code className="flex-1 truncate">ssh frenzpay@204.168.249.108</code>
-                  <Button size="icon-xs" variant="ghost" onClick={() => copyText('ssh frenzpay@204.168.249.108', 'SSH command')}>
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-2 font-medium">3. Edit the env file</p>
-                <div className="flex items-center gap-2 rounded-md border bg-muted px-3 py-2 font-mono text-xs">
-                  <code className="flex-1 truncate">nano /home/frenzpay/shared/.env.production</code>
-                  <Button size="icon-xs" variant="ghost" onClick={() => copyText('nano /home/frenzpay/shared/.env.production', 'Edit command')}>
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Update the following key{rotationFor.keys.length > 1 ? 's' : ''}:
-                </p>
-                <ul className="mt-1 list-disc pl-5 font-mono text-xs">
-                  {rotationFor.keys.map((k) => <li key={k.name}>{k.name}</li>)}
-                </ul>
-              </div>
-
-              <div>
-                <p className="mb-2 font-medium">4. Reload the app (zero-downtime)</p>
-                <div className="flex items-center gap-2 rounded-md border bg-muted px-3 py-2 font-mono text-xs">
-                  <code className="flex-1 truncate">pm2 reload /home/frenzpay/ecosystem.config.js --update-env</code>
-                  <Button size="icon-xs" variant="ghost" onClick={() => copyText('pm2 reload /home/frenzpay/ecosystem.config.js --update-env', 'Reload command')}>
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <p className="mb-2 font-medium">5. Verify</p>
-                <p className="text-xs text-muted-foreground">
-                  Come back to this page and click <strong>Refresh</strong>. The last-4 of the key should match your new value. If the provider is testable, click <strong>Test connection</strong>.
-                </p>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }
