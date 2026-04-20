@@ -11,7 +11,7 @@
  * responses suitable for local development.
  */
 
-import { createHmac, timingSafeEqual, randomBytes } from 'node:crypto';
+import { createHmac, createVerify, timingSafeEqual, randomBytes } from 'node:crypto';
 
 const DEFAULT_BASE = 'https://api.bridge.xyz';
 
@@ -258,20 +258,62 @@ export async function getBridgeVirtualAccount(
  * @param signature Value from the `Bridge-Signature` header
  * @returns         true if the signature is valid
  */
+/**
+ * Verify a Bridge webhook signature.
+ *
+ * Bridge uses **RSA-SHA256** signing since their 2025 webhook revamp. The
+ * dashboard exposes the public key as a PEM block under the webhook's
+ * detail drawer. Paste the full PEM (BEGIN/END lines included) into
+ * `BRIDGE_WEBHOOK_PUBLIC_KEY` in the server env — we don't touch the
+ * customer's private key (Bridge holds it).
+ *
+ * The signature comes in as base64 on the `Webhook-Signature` header (some
+ * older docs say `Bridge-Signature` / `X-Bridge-Signature` — accept all).
+ *
+ * For backwards compatibility we keep the old HMAC code path gated on
+ * `BRIDGE_WEBHOOK_SECRET` being set; that branch is never hit in production
+ * today but exists so an old test can still exercise the handler.
+ */
 export function verifyBridgeWebhookSignature(rawBody: string, signature: string): boolean {
-  const secret = process.env['BRIDGE_WEBHOOK_SECRET'];
-  if (!secret) {
-    console.warn('[bridge] BRIDGE_WEBHOOK_SECRET missing — allowing webhook in dev mode');
-    return process.env['NODE_ENV'] !== 'production';
-  }
-  if (!signature) return false;
+  const publicKeyPem = process.env['BRIDGE_WEBHOOK_PUBLIC_KEY'];
+  const hmacSecret = process.env['BRIDGE_WEBHOOK_SECRET'];
 
-  const computed = createHmac('sha256', secret).update(rawBody, 'utf8').digest('hex');
-  try {
-    return timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(signature, 'hex'));
-  } catch {
+  // ── Preferred: RSA public-key verification ──────────────────────────────
+  if (publicKeyPem) {
+    if (!signature) return false;
+    try {
+      const verifier = createVerify('RSA-SHA256');
+      verifier.update(rawBody, 'utf8');
+      verifier.end();
+      // Bridge base64-encodes the signature on the header. If a hex value ever
+      // shows up, try both encodings.
+      const sigBuf = signature.includes('=') || /^[A-Za-z0-9+/]+=*$/.test(signature)
+        ? Buffer.from(signature, 'base64')
+        : Buffer.from(signature, 'hex');
+      return verifier.verify(publicKeyPem, sigBuf);
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Fallback: legacy HMAC verification (Bridge pre-2025 / test doubles) ─
+  if (hmacSecret) {
+    if (!signature) return false;
+    const computed = createHmac('sha256', hmacSecret).update(rawBody, 'utf8').digest('hex');
+    try {
+      return timingSafeEqual(Buffer.from(computed, 'hex'), Buffer.from(signature, 'hex'));
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Neither configured: fail loud in production, permit in dev ──────────
+  if (process.env['NODE_ENV'] === 'production') {
+    console.warn('[bridge] No BRIDGE_WEBHOOK_PUBLIC_KEY or BRIDGE_WEBHOOK_SECRET set — rejecting webhook in production');
     return false;
   }
+  console.warn('[bridge] No webhook keys set — allowing webhook in dev mode');
+  return true;
 }
 
 /** Generate a unique idempotency key for a virtual-account provisioning request. */

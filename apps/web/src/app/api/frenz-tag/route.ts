@@ -69,7 +69,7 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { frenzTag: { select: { id: true, tag: true } }, kycTier: true },
+    select: { frenzTag: { select: { id: true, tag: true } } },
   });
 
   if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -91,13 +91,11 @@ export async function POST(req: NextRequest) {
         data: { userId: session.userId, tag },
       });
 
-      // Claiming a FrenzTag advances T0 -> T1
-      if (user.kycTier === 'T0') {
-        await tx.user.update({
-          where: { id: session.userId },
-          data: { kycTier: 'T1', kycStatus: 'APPROVED', status: 'ACTIVE' },
-        });
-      }
+      // NB: Claiming a FrenzTag is purely a handle reservation. It MUST NOT
+      // advance KYC tier, set status=ACTIVE, or change kycStatus — that
+      // would let any T0 user skip BVN/NIN verification just by picking a
+      // username. Promotion to T1 only happens via /api/kyc/t1 after a
+      // successful Dojah verification (or admin override).
 
       await tx.auditLog.create({
         data: {

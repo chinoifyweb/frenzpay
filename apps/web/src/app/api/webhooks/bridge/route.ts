@@ -23,9 +23,30 @@ import { ensureAccount, getSystemAccount, postTransaction, Money } from '@frenzp
 import { logger } from '@frenzpay/logger';
 import { captureError } from '@/lib/observability';
 
+/**
+ * GET / HEAD — reachability probe.
+ * Bridge does a GET to the webhook URL when you enable a webhook in their
+ * dashboard; if the endpoint returns anything other than 2xx they flag it
+ * as unreachable and refuse to enable. Event delivery still goes via POST
+ * with signature verification.
+ */
+export async function GET() {
+  return NextResponse.json({ status: 'ok', endpoint: 'bridge' });
+}
+
+export async function HEAD() {
+  return new NextResponse(null, { status: 200 });
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
-  const signature = req.headers.get('bridge-signature') ?? req.headers.get('x-bridge-signature') ?? '';
+  // Bridge canonical header is `Webhook-Signature`; older SDK / proxy paths
+  // forwarded the signature under `Bridge-Signature` or `X-Bridge-Signature`.
+  const signature =
+    req.headers.get('webhook-signature') ??
+    req.headers.get('bridge-signature') ??
+    req.headers.get('x-bridge-signature') ??
+    '';
 
   // ── Verify signature ───────────────────────────────────────────────────────
   if (!verifyBridgeWebhookSignature(rawBody, signature)) {
