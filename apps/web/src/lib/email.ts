@@ -244,6 +244,32 @@ export async function sendContactFormNotification(data: { name: string; email: s
   })
 }
 
+/** Confirmation to the customer right after they submit KYC — sets 24h expectation. */
+export async function sendKYCSubmittedEmail(email: string, name: string) {
+  return resend.emails.send({
+    from: FROM_SUPPORT,
+    to: email,
+    subject: 'We got your documents — review in progress',
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Documents received</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Thanks for submitting your identity documents. Our team reviews every application manually to keep Frenz Pay safe.</p>
+        <div style="background: #f0f9ff; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #374151; font-size: 14px;"><strong>Typical turnaround: under 24 hours.</strong></p>
+          <p style="margin: 8px 0 0; color: #6b7280; font-size: 13px;">You&rsquo;ll get another email the moment we&rsquo;re done \u2014 approval or a short note if we need anything else.</p>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">In the meantime you can explore the dashboard. Money movement features unlock as soon as verification completes.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
+      </div>
+    `,
+  })
+}
+
 export async function sendKYCApprovedEmail(email: string, name: string) {
   return resend.emails.send({
     from: FROM_SUPPORT,

@@ -13,6 +13,7 @@ import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 import { ensureBridgeCustomer } from '@/lib/bridge-provision';
 import { logger } from '@frenzpay/logger';
+import { sendKYCApprovedEmail, sendKYCRejectedEmail } from '@/lib/email';
 
 const ReviewSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('approve') }),
@@ -46,7 +47,13 @@ export async function PATCH(
 
   const submission = await prisma.kycSubmission.findUnique({
     where: { id },
-    select: { id: true, userId: true, tier: true, status: true },
+    select: {
+      id: true,
+      userId: true,
+      tier: true,
+      status: true,
+      user: { select: { email: true, firstName: true, lastName: true } },
+    },
   });
 
   if (!submission) {
@@ -107,6 +114,21 @@ export async function PATCH(
       },
     });
   });
+
+  // ── Notify the customer by email (best-effort) ─────────────────────────────
+  const displayName =
+    `${submission.user.firstName ?? ''} ${submission.user.lastName ?? ''}`.trim() ||
+    submission.user.email;
+  if (action === 'approve') {
+    void sendKYCApprovedEmail(submission.user.email, displayName).catch((err) =>
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'KYC approved email failed'),
+    );
+  } else {
+    const { rejectionReason } = parsed.data as { action: 'reject'; rejectionReason: string };
+    void sendKYCRejectedEmail(submission.user.email, displayName, rejectionReason).catch((err) =>
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'KYC rejected email failed'),
+    );
+  }
 
   // ── Post-commit: create Bridge customer on T2+ approval ────────────────────
   // We only create the Bridge customer record here (identity-level), NOT a

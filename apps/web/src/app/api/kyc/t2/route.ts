@@ -37,6 +37,8 @@ import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 import { encryptField } from '@frenzpay/crypto';
 import { logger } from '@frenzpay/logger';
+import { storeKycFile } from '@/lib/kyc-storage';
+import { sendKYCSubmittedEmail, sendAdminNewKYCNotification } from '@/lib/email';
 
 // ── Validation constants ───────────────────────────────────────────────────
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
@@ -58,32 +60,6 @@ const MIN_NAME_CHARS = 4;
 const MIN_DOC_NUMBER_CHARS = 5;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-
-interface UploadedFile {
-  storageKey: string;
-  encryptedDek: string;
-}
-
-/**
- * Upload a single file to S3 with AES-GCM envelope encryption.
- *
- * NOTE: this is currently a STUB. It generates a deterministic storage key
- * but does not persist the file bytes anywhere. Real S3 upload + DEK wrapping
- * via CRYPTO_MASTER_KEY will be wired up next — tracking issue in the admin
- * punch-list. Approvals are therefore operating on metadata only until S3 is
- * live; do not treat them as compliant reviews in the meantime.
- */
-async function uploadFile(
-  userId: string,
-  submissionPrefix: string,
-  file: File,
-  label: string,
-): Promise<UploadedFile> {
-  const ext = file.type.split('/')[1] ?? 'bin';
-  const storageKey = `kyc/${userId}/${submissionPrefix}/${label}_${Date.now()}.${ext}`;
-  const encryptedDek = Buffer.from(`stub-dek-${Date.now()}`).toString('base64');
-  return { storageKey, encryptedDek };
-}
 
 function validateFile(
   label: string,
@@ -177,6 +153,8 @@ export async function POST(req: NextRequest) {
       kycStatus: true,
       status: true,
       email: true,
+      firstName: true,
+      lastName: true,
       kycSubmissions: {
         where: { status: { in: ['PENDING', 'PROCESSING'] } },
         select: { id: true, tier: true, status: true },
@@ -199,14 +177,26 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── Upload files ─────────────────────────────────────────────────────────
+  // ── Upload files (envelope-encrypted to disk / S3) ───────────────────────
   const submissionPrefix = `${session.userId}-${Date.now()}`;
-  const [idFrontUpload, selfieUpload, livenessUpload, idBackUpload] = await Promise.all([
-    uploadFile(session.userId, submissionPrefix, idFront!, 'id_front'),
-    uploadFile(session.userId, submissionPrefix, selfie!, 'selfie'),
-    uploadFile(session.userId, submissionPrefix, liveness!, 'liveness'),
-    idBack ? uploadFile(session.userId, submissionPrefix, idBack, 'id_back') : Promise.resolve(null),
-  ]);
+  let idFrontUpload, selfieUpload, livenessUpload, idBackUpload;
+  try {
+    [idFrontUpload, selfieUpload, livenessUpload, idBackUpload] = await Promise.all([
+      storeKycFile(idFront!, session.userId, submissionPrefix, 'id_front'),
+      storeKycFile(selfie!, session.userId, submissionPrefix, 'selfie'),
+      storeKycFile(liveness!, session.userId, submissionPrefix, 'liveness'),
+      idBack ? storeKycFile(idBack, session.userId, submissionPrefix, 'id_back') : Promise.resolve(null),
+    ]);
+  } catch (err) {
+    logger.error(
+      { userId: session.userId, err: err instanceof Error ? err.message : String(err) },
+      'KYC file storage failed',
+    );
+    return NextResponse.json(
+      { error: 'Could not store your documents. Please try again in a moment.' },
+      { status: 500 },
+    );
+  }
 
   // ── Encrypt PII ──────────────────────────────────────────────────────────
   const encryptedDocNumber = encryptField(docNumber, session.userId);
@@ -300,8 +290,16 @@ export async function POST(req: NextRequest) {
     'KYC submission received',
   );
 
-  // TODO: fire 'kyc.submitted' email — handled in follow-up commit once the
-  // email templates land.
+  // ── Fire notifications (best-effort — don't fail the request if SMTP is down) ──
+  const displayName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim() || user.email;
+  void Promise.allSettled([
+    sendKYCSubmittedEmail(user.email, displayName).catch((err) =>
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'KYC submitted email failed'),
+    ),
+    sendAdminNewKYCNotification(displayName, user.email).catch((err) =>
+      logger.warn({ err: err instanceof Error ? err.message : err }, 'Admin KYC notification failed'),
+    ),
+  ]);
 
   return NextResponse.json(
     {

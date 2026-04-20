@@ -78,6 +78,21 @@ function getCurrentKeyVersion(): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Wrap an arbitrary 32-byte key (DEK, file encryption key, etc.) with the
+ * master KEK. Exposed so KYC document storage can share the same primitive.
+ */
+export function wrapKey(key: Buffer): string {
+  const kek = getKek(getCurrentKeyVersion())
+  return wrapDek(key, kek)
+}
+
+/** Unwrap a wrapped key back to raw bytes. See wrapKey(). */
+export function unwrapKey(wrapped: string): Buffer {
+  const kek = getKek(getCurrentKeyVersion())
+  return unwrapDek(wrapped, kek)
+}
+
+/**
  * Wrap (encrypt) a DEK with the KEK using AES-256-GCM.
  * Returns base64-encoded `iv:authTag:ciphertext`.
  */

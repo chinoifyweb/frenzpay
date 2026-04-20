@@ -51,7 +51,7 @@ interface KYCDocument {
   id: string
   docType: string
   mimeType: string
-  fileSizeBytes: number
+  fileSizeBytes: string   // BigInt serialised as string
   createdAt: string
 }
 
@@ -72,6 +72,13 @@ interface KYCSubmission {
   submittedAt: string
   reviewedAt: string | null
   rejectionReason: string | null
+  /** Decrypted server-side — as printed on the ID */
+  fullLegalName: string | null
+  /** Decrypted server-side — one of NIN / passport / driver's number */
+  docNumber: string | null
+  docKind: 'nin' | 'passport' | 'drivers_license' | null
+  purposeOfAccount: string | null
+  sourceOfFunds: string | null
   user: KYCUser
   documents: KYCDocument[]
 }
@@ -107,12 +114,47 @@ const PAGE_LIMIT = 20
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
+function formatBytes(bytes: number | string): string {
+  const n = typeof bytes === 'string' ? Number(bytes) : bytes
+  if (!n) return '0 B'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+  const i = Math.floor(Math.log(n) / Math.log(k))
+  return `${parseFloat((n / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+}
+
+const DOC_KIND_LABEL: Record<NonNullable<KYCSubmission['docKind']>, string> = {
+  nin: 'NIN',
+  passport: 'International Passport',
+  drivers_license: 'Driver\u2019s License',
+}
+
+const PURPOSE_LABEL: Record<string, string> = {
+  personal: 'Personal use',
+  business: 'Business / company',
+  freelance: 'Freelance / contractor income',
+  ecommerce: 'E-commerce / online sales',
+  investment: 'Investment / trading',
+  remittance: 'Remittance / family support',
+  other: 'Other',
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  salary: 'Salary / employment',
+  business: 'Business revenue',
+  freelance: 'Freelance / contract work',
+  investments: 'Investments / dividends',
+  savings: 'Personal savings',
+  gift: 'Gift / family support',
+  other: 'Other',
+}
+
+const DOC_TYPE_LABEL: Record<string, string> = {
+  id_front: 'ID \u2014 front',
+  id_back: 'ID \u2014 back',
+  selfie: 'Selfie',
+  liveness: 'Liveness',
+  proof_of_address: 'Proof of address',
 }
 
 function getUserFullName(user: KYCUser): string {
@@ -417,7 +459,7 @@ export default function KYCPage() {
 
       {/* Review Dialog */}
       <Dialog open={!!selectedSubmission} onOpenChange={(open) => { if (!open) closeReview() }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>KYC Submission Review</DialogTitle>
           </DialogHeader>
@@ -484,7 +526,46 @@ export default function KYCPage() {
                 </div>
               </div>
 
-              {/* Documents */}
+              {/* Identity claim — decrypted server-side for admin eyes only */}
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Identity claim
+                </h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="col-span-2">
+                    <p className="text-muted-foreground text-xs">Full legal name (as printed on ID)</p>
+                    <p className="font-medium">{selectedSubmission.fullLegalName ?? '\u2014'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">ID type</p>
+                    <p className="font-medium">
+                      {selectedSubmission.docKind ? DOC_KIND_LABEL[selectedSubmission.docKind] : '\u2014'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Document number</p>
+                    <p className="font-mono text-sm">{selectedSubmission.docNumber ?? '\u2014'}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Purpose of account</p>
+                    <p className="font-medium">
+                      {selectedSubmission.purposeOfAccount
+                        ? (PURPOSE_LABEL[selectedSubmission.purposeOfAccount] ?? selectedSubmission.purposeOfAccount)
+                        : '\u2014'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground text-xs">Source of funds</p>
+                    <p className="font-medium">
+                      {selectedSubmission.sourceOfFunds
+                        ? (SOURCE_LABEL[selectedSubmission.sourceOfFunds] ?? selectedSubmission.sourceOfFunds)
+                        : '\u2014'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Documents — each opens in a new tab, streamed decrypted */}
               <div className="space-y-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Documents ({selectedSubmission.documents.length})
@@ -492,28 +573,45 @@ export default function KYCPage() {
                 {selectedSubmission.documents.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No documents attached.</p>
                 ) : (
-                  <div className="space-y-2">
-                    {selectedSubmission.documents.map((doc) => (
-                      <div
-                        key={doc.id}
-                        className="flex items-center gap-3 rounded-lg border p-3 bg-muted/20"
-                      >
-                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted shrink-0">
-                          <FileText className="h-4 w-4 text-muted-foreground" />
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {selectedSubmission.documents.map((doc) => {
+                      const label = DOC_TYPE_LABEL[doc.docType] ?? doc.docType
+                      const isImage = doc.mimeType.startsWith('image/')
+                      const isVideo = doc.mimeType.startsWith('video/')
+                      const src = `/api/admin/kyc/document/${doc.id}`
+                      return (
+                        <div key={doc.id} className="overflow-hidden rounded-lg border bg-muted/20">
+                          <div className="aspect-video bg-black/5 dark:bg-black/20 flex items-center justify-center">
+                            {isImage && (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={src} alt={label} className="max-h-full max-w-full object-contain" />
+                            )}
+                            {isVideo && (
+                              <video src={src} controls playsInline className="max-h-full max-w-full" />
+                            )}
+                            {!isImage && !isVideo && (
+                              <FileText className="h-8 w-8 text-muted-foreground" />
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
+                            <div className="min-w-0">
+                              <p className="truncate font-medium">{label}</p>
+                              <p className="truncate text-muted-foreground">
+                                {doc.mimeType} &middot; {formatBytes(doc.fileSizeBytes)}
+                              </p>
+                            </div>
+                            <a
+                              href={src}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 rounded-md border px-2 py-1 hover:bg-muted"
+                            >
+                              Open
+                            </a>
+                          </div>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium capitalize truncate">
-                            {doc.docType.replace(/_/g, ' ').toLowerCase()}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {doc.mimeType} &middot; {formatBytes(doc.fileSizeBytes)}
-                          </p>
-                        </div>
-                        <p className="text-xs text-muted-foreground whitespace-nowrap shrink-0">
-                          {formatDate(doc.createdAt)}
-                        </p>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>

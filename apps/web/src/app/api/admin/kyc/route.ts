@@ -6,6 +6,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
+import { decryptField, type CipherPayload } from '@frenzpay/crypto';
+
+function tryDecrypt(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null;
+  try {
+    return decryptField(payload as CipherPayload);
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(req: NextRequest) {
   const { session } = await requireSession();
@@ -42,6 +52,13 @@ export async function GET(req: NextRequest) {
         submittedAt: true,
         reviewedAt: true,
         rejectionReason: true,
+        // Encrypted PII + non-encrypted attestations
+        fullLegalName: true,
+        nin: true,
+        passportNumber: true,
+        driverLicenseNumber: true,
+        purposeOfAccount: true,
+        sourceOfFunds: true,
         user: {
           select: {
             id: true,
@@ -66,8 +83,38 @@ export async function GET(req: NextRequest) {
     prisma.kycSubmission.count({ where }),
   ]);
 
+  // Decrypt PII fields server-side for admin viewing. These never hit the
+  // client as ciphertext — the plain name / doc number is what the admin
+  // actually needs to compare against the ID photo.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const enriched = submissions.map((s: any) => ({
+    ...s,
+    fullLegalName: tryDecrypt(s.fullLegalName),
+    // Return the one populated doc-number column in a single tidy field
+    docNumber:
+      tryDecrypt(s.nin) ??
+      tryDecrypt(s.passportNumber) ??
+      tryDecrypt(s.driverLicenseNumber) ??
+      null,
+    docKind:
+      s.nin ? 'nin'
+      : s.passportNumber ? 'passport'
+      : s.driverLicenseNumber ? 'drivers_license'
+      : null,
+    // Drop raw ciphertexts from the response
+    nin: undefined,
+    passportNumber: undefined,
+    driverLicenseNumber: undefined,
+    // Serialise BigInt file sizes so JSON.stringify doesn't crash
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    documents: s.documents.map((d: any) => ({
+      ...d,
+      fileSizeBytes: d.fileSizeBytes.toString(),
+    })),
+  }));
+
   return NextResponse.json({
-    submissions,
+    submissions: enriched,
     pagination: { page, limit, total, pages: Math.ceil(total / limit) },
   });
 }
