@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
+import { provisionBridgeForUser } from '@/lib/bridge-provision';
+import { logger } from '@frenzpay/logger';
 
 const ReviewSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('approve') }),
@@ -106,8 +108,57 @@ export async function PATCH(
     });
   });
 
+  // ── Post-commit: auto-provision Bridge on T2+ approval ─────────────────────
+  // Bridge's virtual USD account + USDC custody requires Advanced KYC (T2 on
+  // our tier system), so we only trigger provisioning when the admin has
+  // approved at that level or higher. Failure here does NOT revert the tier
+  // bump — the user is still T2 in our books, but ops can retry provisioning
+  // from the admin "Users" panel. We surface the outcome in the response so
+  // the admin UI can show a warning toast if Bridge was down.
+  let bridgeResult: Awaited<ReturnType<typeof provisionBridgeForUser>> | null = null;
+  if (action === 'approve' && (submission.tier === 'T2' || submission.tier === 'T3')) {
+    try {
+      bridgeResult = await provisionBridgeForUser(submission.userId, {
+        triggeredBy: 'admin',
+        adminId: session.userId,
+      });
+      if (!bridgeResult.ok) {
+        logger.warn(
+          { userId: submission.userId, bridgeError: bridgeResult.error },
+          'KYC approved but Bridge onboarding failed; ops can retry',
+        );
+      } else {
+        logger.info(
+          { userId: submission.userId, created: bridgeResult.created },
+          'KYC approved and Bridge onboarding completed',
+        );
+      }
+    } catch (err) {
+      // Extra belt for unexpected errors — the helper swallows its own, but just in case.
+      logger.error(
+        { userId: submission.userId, err: err instanceof Error ? err.message : String(err) },
+        'Unhandled error during Bridge provisioning post-KYC',
+      );
+      bridgeResult = {
+        ok: false,
+        created: { customer: false, virtualAccount: false },
+        error: 'Unexpected error during Bridge provisioning',
+      };
+    }
+  }
+
   return NextResponse.json({
     message: action === 'approve' ? 'KYC submission approved.' : 'KYC submission rejected.',
     status: action === 'approve' ? 'APPROVED' : 'REJECTED',
+    ...(bridgeResult
+      ? {
+          bridge: {
+            ok: bridgeResult.ok,
+            customerCreated: bridgeResult.created.customer,
+            virtualAccountCreated: bridgeResult.created.virtualAccount,
+            error: bridgeResult.error ?? null,
+          },
+        }
+      : {}),
   });
 }
