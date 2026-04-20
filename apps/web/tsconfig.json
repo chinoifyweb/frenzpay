@@ -66,9 +66,6 @@
       "@frenzpay/kyc": [
         "../../packages/kyc/src/index.ts"
       ],
-      "@frenzpay/kyc/dojah": [
-        "../../packages/kyc/src/dojah.ts"
-      ],
       "@frenzpay/providers/bridge": [
         "../../packages/providers/src/bridge.ts"
       ],

@@ -29,7 +29,7 @@ interface KeyInfo {
 }
 
 interface ProviderStatus {
-  id: 'bridge' | 'dojah' | 'sentry';
+  id: 'bridge' | 'sentry';
   name: string;
   purpose: string;
   /** Where the admin should go to get / rotate these keys */
@@ -62,8 +62,6 @@ export async function GET() {
 
   const bridgeKey = process.env['BRIDGE_API_KEY'];
   const bridgeWebhook = process.env['BRIDGE_WEBHOOK_SECRET'];
-  const dojahAppId = process.env['DOJAH_APP_ID'];
-  const dojahKey = process.env['DOJAH_PRIVATE_KEY'];
   const sentryDsn = process.env['SENTRY_DSN'];
 
   const providers: ProviderStatus[] = [
@@ -92,34 +90,6 @@ export async function GET() {
           description: 'HMAC-SHA256 shared secret used to verify Bridge webhooks',
           configured: !!bridgeWebhook,
           tail: maskTail(bridgeWebhook),
-          mode: null,
-        },
-      ],
-    },
-    {
-      id: 'dojah',
-      name: 'Dojah',
-      purpose: 'Identity verification (BVN, NIN, selfie liveness)',
-      dashboardUrl: 'https://app.dojah.io',
-      status: dojahAppId && dojahKey ? 'ok' : dojahAppId || dojahKey ? 'partial' : 'missing',
-      blocks: [
-        'KYC T1 — BVN / NIN name match',
-        'KYC T2 — selfie liveness',
-      ],
-      testable: false, // Dojah charges per call; don't burn quota on "is it alive?" checks
-      keys: [
-        {
-          name: 'DOJAH_APP_ID',
-          description: 'App ID from the Dojah console',
-          configured: !!dojahAppId,
-          tail: maskTail(dojahAppId),
-          mode: null,
-        },
-        {
-          name: 'DOJAH_PRIVATE_KEY',
-          description: 'Private / secret key — never exposed to client',
-          configured: !!dojahKey,
-          tail: maskTail(dojahKey),
           mode: null,
         },
       ],

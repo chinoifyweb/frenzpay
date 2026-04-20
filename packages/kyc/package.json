@@ -9,10 +9,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
-    },
-    "./dojah": {
-      "types": "./dist/dojah.d.ts",
-      "default": "./src/dojah.ts"
     }
   },
   "scripts": {

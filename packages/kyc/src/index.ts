@@ -1,11 +1,16 @@
 /**
- * @frenzpay/kyc — KYC tier logic, FrenzTag validation, BVN/NIN format checks
+ * @frenzpay/kyc — KYC tier logic, FrenzTag validation, ID format helpers.
  *
  * Non-negotiables:
- * - KYC tier advances are irreversible (T0 → T1 → T2 → T3)
- * - PII fields never pass through this package — only blind indexes / hashes
- * - All status transitions must generate an AuditLog entry (done at route level)
- * - FrenzTag format: /^[a-z][a-z0-9]{5,7}$/ (6-8 chars, starts with letter)
+ * - KYC tier advances are irreversible but may skip intermediate tiers in
+ *   the current internal-review model: T0 -> T2 in one step after a
+ *   successful manual review of ID + selfie + liveness + purpose + source
+ *   of funds. No automatic BVN / NIN verification.
+ * - PII fields never pass through this package — only format checks and
+ *   plain-value regex.
+ * - All status transitions must generate an AuditLog entry (done at the
+ *   route level).
+ * - FrenzTag format: /^[a-z][a-z0-9]{5,7}$/ (6-8 chars, starts with letter).
  */
 
 // ─── Tier labels & descriptions ───────────────────────────────────────────────
@@ -21,9 +26,9 @@ export const KYC_TIER_LABELS: Record<KycTierValue, string> = {
 };
 
 export const KYC_TIER_DESCRIPTIONS: Record<KycTierValue, string> = {
-  T0: 'Email and phone verified',
-  T1: 'FrenzTag claimed + BVN confirmed',
-  T2: 'Government ID + liveness check',
+  T0: 'Signup verified (email)',
+  T1: 'Reserved — not used by the internal KYC flow',
+  T2: 'Government ID + selfie + liveness, manually reviewed within 24h',
   T3: 'Enhanced due diligence (high-value accounts)',
 };
 
@@ -131,24 +136,28 @@ export function isValidPassportFormat(passport: string): boolean {
 
 // ─── KYC requirements per tier ────────────────────────────────────────────────
 
-export interface KycT1Payload {
-  /** Full legal name as it appears on government ID */
-  fullLegalName: string;
-  /** Raw BVN — will be encrypted by the route layer before persisting */
-  bvn: string;
-}
-
-export interface KycT2Payload {
-  /** One of: 'nin' | 'passport' | 'drivers_license' | 'voters_card' */
-  docType: 'nin' | 'passport' | 'drivers_license' | 'voters_card';
-  /** Raw document number — encrypted by route layer */
+export interface KycSubmissionPayload {
+  /** One of the ID types we currently accept in the internal review flow */
+  docType: 'nin' | 'passport' | 'drivers_license';
+  /** Raw document number — encrypted by route layer before persisting */
   docNumber: string;
-  /** Supabase Storage keys, set by route layer after upload */
+  /** Full legal name as printed on the ID (encrypted by route layer) */
+  fullLegalName: string;
+  /** What the customer plans to use the account for */
+  purposeOfAccount:
+    | 'personal' | 'business' | 'freelance' | 'ecommerce' | 'investment'
+    | 'remittance' | 'other';
+  /** Where the customer's money comes from */
+  sourceOfFunds:
+    | 'salary' | 'business' | 'freelance' | 'investments' | 'gift'
+    | 'savings' | 'other';
+  /** Storage keys populated by the route after S3 upload */
   idFrontStorageKey: string;
   idBackStorageKey?: string;
   selfieStorageKey: string;
-  /** User-declared source of funds */
-  sourceOfFunds: string;
+  /** Liveness proof — short video OR series-of-poses photo */
+  livenessStorageKey: string;
+  livenessMimeType: string;
 }
 
 export interface KycT3Payload {
@@ -160,23 +169,27 @@ export interface KycT3Payload {
 
 // ─── Utility: check if user can advance to a tier ────────────────────────────
 
+/**
+ * Check whether a user may submit KYC for a given target tier.
+ *
+ * The internal KYC model lets a T0 user submit directly for T2 (one-shot
+ * manual review). T3 enhanced DD still requires being T2 first.
+ */
 export function canSubmitForTier(
   currentTier: KycTierValue,
   targetTier: KycTierValue,
 ): { allowed: boolean; reason?: string } {
   const tierIndex: Record<KycTierValue, number> = { T0: 0, T1: 1, T2: 2, T3: 3 };
-
   const current = tierIndex[currentTier];
   const target = tierIndex[targetTier];
 
   if (target <= current) {
     return { allowed: false, reason: `Already at ${KYC_TIER_LABELS[currentTier]} or higher.` };
   }
-  if (target > current + 1) {
-    return {
-      allowed: false,
-      reason: `Must complete ${KYC_TIER_LABELS[KYC_TIERS[current + 1]!]} first.`,
-    };
+  // T0 -> T2 is allowed (skips T1) under the internal single-step review.
+  // Any skip > 1 tier beyond that (e.g. T0 -> T3) still needs T2 first.
+  if (targetTier === 'T3' && currentTier !== 'T2') {
+    return { allowed: false, reason: `T3 requires completing T2 first.` };
   }
   return { allowed: true };
 }

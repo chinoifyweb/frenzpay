@@ -94,7 +94,6 @@ const nextConfig: NextConfig = {
                 "connect-src 'self'",
                 "https://api.frenzpay.co",
                 "https://api.bridge.xyz",
-                "https://api.dojah.io",
                 "https://*.ingest.sentry.io",
               ].join(" "),
               // iFrames: Bridge card iframe, Turnstile

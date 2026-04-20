@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
-import { provisionBridgeForUser } from '@/lib/bridge-provision';
+import { ensureBridgeCustomer } from '@/lib/bridge-provision';
 import { logger } from '@frenzpay/logger';
 
 const ReviewSchema = z.discriminatedUnion('action', [
@@ -108,41 +108,40 @@ export async function PATCH(
     });
   });
 
-  // ── Post-commit: auto-provision Bridge on T2+ approval ─────────────────────
-  // Bridge's virtual USD account + USDC custody requires Advanced KYC (T2 on
-  // our tier system), so we only trigger provisioning when the admin has
-  // approved at that level or higher. Failure here does NOT revert the tier
-  // bump — the user is still T2 in our books, but ops can retry provisioning
-  // from the admin "Users" panel. We surface the outcome in the response so
-  // the admin UI can show a warning toast if Bridge was down.
-  let bridgeResult: Awaited<ReturnType<typeof provisionBridgeForUser>> | null = null;
+  // ── Post-commit: create Bridge customer on T2+ approval ────────────────────
+  // We only create the Bridge customer record here (identity-level), NOT a
+  // virtual account. The user then picks which currency to activate (USD /
+  // EUR / …) themselves from /dashboard/wallet, and the per-currency
+  // virtual account is provisioned at that point via /api/accounts/activate.
+  // This keeps the customer in control of which rails they want and avoids
+  // creating USD accounts for users who only care about EUR (or vice versa).
+  let bridgeResult: Awaited<ReturnType<typeof ensureBridgeCustomer>> | null = null;
   if (action === 'approve' && (submission.tier === 'T2' || submission.tier === 'T3')) {
     try {
-      bridgeResult = await provisionBridgeForUser(submission.userId, {
+      bridgeResult = await ensureBridgeCustomer(submission.userId, {
         triggeredBy: 'admin',
         adminId: session.userId,
       });
       if (!bridgeResult.ok) {
         logger.warn(
           { userId: submission.userId, bridgeError: bridgeResult.error },
-          'KYC approved but Bridge onboarding failed; ops can retry',
+          'KYC approved but Bridge customer creation failed; ops can retry',
         );
       } else {
         logger.info(
-          { userId: submission.userId, created: bridgeResult.created },
-          'KYC approved and Bridge onboarding completed',
+          { userId: submission.userId, customerCreated: bridgeResult.created },
+          'KYC approved; Bridge customer ready for currency activation',
         );
       }
     } catch (err) {
-      // Extra belt for unexpected errors — the helper swallows its own, but just in case.
       logger.error(
         { userId: submission.userId, err: err instanceof Error ? err.message : String(err) },
-        'Unhandled error during Bridge provisioning post-KYC',
+        'Unhandled error during Bridge customer creation post-KYC',
       );
       bridgeResult = {
         ok: false,
-        created: { customer: false, virtualAccount: false },
-        error: 'Unexpected error during Bridge provisioning',
+        created: false,
+        error: 'Unexpected error creating Bridge customer',
       };
     }
   }
@@ -154,8 +153,7 @@ export async function PATCH(
       ? {
           bridge: {
             ok: bridgeResult.ok,
-            customerCreated: bridgeResult.created.customer,
-            virtualAccountCreated: bridgeResult.created.virtualAccount,
+            customerCreated: bridgeResult.created,
             error: bridgeResult.error ?? null,
           },
         }

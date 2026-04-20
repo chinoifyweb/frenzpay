@@ -43,7 +43,6 @@ export default function PrivacyPage() {
       <h2>5. Who we share data with</h2>
       <ul>
         <li><strong>Bridge</strong> — for USD virtual accounts and cards (US-regulated BaaS provider).</li>
-        <li><strong>Dojah</strong> — for BVN/NIN verification.</li>
         <li><strong>Law enforcement</strong> — when required by court order or regulatory request.</li>
       </ul>
 

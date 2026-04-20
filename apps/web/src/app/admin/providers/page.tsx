@@ -36,7 +36,7 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 
-type ProviderId = 'bridge' | 'dojah' | 'sentry'
+type ProviderId = 'bridge' | 'sentry'
 type ProviderStatusValue = 'ok' | 'partial' | 'missing'
 
 interface KeyInfo {

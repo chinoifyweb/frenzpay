@@ -322,7 +322,7 @@ model KycSubmission {
   userId           String              @map("user_id") @db.Uuid
   tier             KycTier
   status           KycSubmissionStatus @default(PENDING)
-  provider         String?             // "dojah" | "manual"
+  provider         String?             // always "manual" — internal review within 24h; no third-party auto-verification
   externalRef      String?             @map("external_ref")
 
   // Encrypted PII — stored as JSONB CipherPayload
@@ -336,9 +336,10 @@ model KycSubmission {
   passportBlindIndex String? @unique @map("passport_blind_index")
   driverLicenseNumber Json? @db.JsonB @map("driver_license_number")
 
-  // Non-PII metadata
-  sourceOfFunds    String? @map("source_of_funds")
-  rejectionReason  String? @map("rejection_reason")
+  // Non-PII metadata (internal manual KYC — no Dojah)
+  sourceOfFunds       String?  @map("source_of_funds")      // free text or enum: Salary, Business income, Freelance, Investment, Gift, Other
+  purposeOfAccount    String?  @map("purpose_of_account")   // free text or enum: Personal, Business, Freelance, E-commerce, Investment, Other
+  rejectionReason     String?  @map("rejection_reason")
   reviewedBy       String? @map("reviewed_by") @db.Uuid // AdminUser id
   submittedAt      DateTime @default(now()) @map("submitted_at")
   reviewedAt       DateTime? @map("reviewed_at")
@@ -354,7 +355,7 @@ model KycSubmission {
 model KycDocument {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   submissionId    String   @map("submission_id") @db.Uuid
-  docType         String   @map("doc_type") // "id_front" | "id_back" | "selfie" | "proof_of_address"
+  docType         String   @map("doc_type") // "id_front" | "id_back" | "selfie" | "liveness" | "proof_of_address"
   // S3 key only — URL generated on-demand as pre-signed; DEK stored below
   storageKey      String   @map("storage_key")
   encryptedDek    String   @map("encrypted_dek") // base64-wrapped DEK
