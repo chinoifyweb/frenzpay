@@ -46,16 +46,12 @@ await mkdir(dirname(OUTFILE), { recursive: true });
 
 // External = resolved at runtime from the standalone node_modules. Anything NOT
 // listed here gets inlined into the bundle.
+//
+// NB: workspace packages (@frenzpay/*) MUST be inlined. Next.js traces their
+// source into standalone/packages/ rather than creating symlinks under
+// node_modules/@frenzpay/, so Node can't resolve the `@frenzpay/foo` import
+// specifier at runtime from cron.mjs. Inlining sidesteps that entirely.
 const external = [
-  // Workspace packages — Next traces these into standalone/node_modules/...
-  '@frenzpay/auth',
-  '@frenzpay/db',
-  '@frenzpay/events',
-  '@frenzpay/kyc',
-  '@frenzpay/ledger',
-  '@frenzpay/logger',
-  '@frenzpay/providers',
-  '@frenzpay/validators',
   // Heavy / native deps best left unbundled — Next's standalone tracing pulled
   // these into standalone/node_modules/ via /api routes that import them.
   '@prisma/client',
@@ -65,8 +61,8 @@ const external = [
   'nodemailer',
   'pino',
   'pino-pretty',
-  // node-cron is NOT traced by Next (nothing under /app imports it), so it
-  // must be inlined to avoid ERR_MODULE_NOT_FOUND at runtime.
+  // Everything else (incl. all @frenzpay/* workspace packages + node-cron)
+  // gets inlined so the runtime only needs the externals above.
 ];
 
 const result = await build({
