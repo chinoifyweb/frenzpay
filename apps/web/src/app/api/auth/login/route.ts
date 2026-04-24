@@ -243,10 +243,20 @@ export async function POST(request: NextRequest) {
   }
 
   // 8. Create session
+  // Admin-role promotion: if the user's email is listed in the
+  // FRENZPAY_ADMIN_EMAILS env var (comma-separated, case-insensitive), the
+  // session carries role='admin' so the user can access /admin/*. This is
+  // a simple stand-in for a full admin_users lookup until that's wired up.
+  const adminList = (process.env['FRENZPAY_ADMIN_EMAILS'] ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  const sessionRole = adminList.includes(user.email.toLowerCase()) ? 'admin' : 'user';
+
   const cookieValue = await createSession({
     userId: user.id,
     email: user.email,
-    role: 'user',
+    role: sessionRole,
     kycTier: tierToNumber(user.kycTier),
     deviceId: device.id,
     ipAddress: ip,
