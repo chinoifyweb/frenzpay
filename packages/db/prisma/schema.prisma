@@ -63,6 +63,7 @@ model User {
 
   // Profile
   firstName     String?  @map("first_name")
+  middleName    String?  @map("middle_name")  // Graph requires name_other for /person creation
   lastName      String?  @map("last_name")
   displayName   String?  @map("display_name")
   avatarUrl     String?  @map("avatar_url")
@@ -73,7 +74,13 @@ model User {
   addressLine1  Json?    @db.JsonB @map("address_line1")
   addressLine2  Json?    @db.JsonB @map("address_line2")
   city          Json?    @db.JsonB
+  // state — NG: 2-letter state code (LA/FC/etc.); US: 2-letter state code; others: free string
+  addressState  String?  @map("address_state")
   postalCode    Json?    @db.JsonB @map("postal_code")
+
+  // External provider IDs — Graph Person created once on KYC approval; used
+  // on every subsequent Graph API call (bank_account, payouts, cards, addresses).
+  graphPersonId String?  @unique @map("graph_person_id")
 
   // Flags
   emailVerified Boolean  @default(false) @map("email_verified")
@@ -339,6 +346,13 @@ model KycSubmission {
   // Non-PII metadata (internal manual KYC — no Dojah)
   sourceOfFunds       String?  @map("source_of_funds")      // free text or enum: Salary, Business income, Freelance, Investment, Gift, Other
   purposeOfAccount    String?  @map("purpose_of_account")   // free text or enum: Personal, Business, Freelance, E-commerce, Investment, Other
+
+  // Graph USD virtual account requirement — background_information object
+  // sent to POST /person. NGN-only accounts can leave these null.
+  employmentStatus    String?  @map("employment_status")    // employed | self_employed | unemployed | student | retired | other
+  occupation          String?  @map("occupation")
+  expectedMonthlyInflowCents BigInt? @map("expected_monthly_inflow_cents")
+
   rejectionReason     String?  @map("rejection_reason")
   reviewedBy       String? @map("reviewed_by") @db.Uuid // AdminUser id
   submittedAt      DateTime @default(now()) @map("submitted_at")

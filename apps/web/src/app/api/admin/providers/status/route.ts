@@ -62,6 +62,8 @@ export async function GET() {
 
   const graphKey = process.env['GRAPH_API_KEY'];
   const graphWebhook = process.env['GRAPH_WEBHOOK_SECRET'];
+  const graphEnv = process.env['GRAPH_ENVIRONMENT'] ?? 'test';
+  const graphWebhookVerify = process.env['GRAPH_WEBHOOK_VERIFY'] ?? '1';
   const sentryDsn = process.env['SENTRY_DSN'];
 
   // Bridge provider is intentionally not surfaced here \u2014 it's managed on the
@@ -93,6 +95,20 @@ export async function GET() {
           description: 'Shared secret used to verify incoming Graph webhooks (HMAC-SHA256 default).',
           configured: !!graphWebhook,
           tail: maskTail(graphWebhook),
+          mode: null,
+        },
+        {
+          name: 'GRAPH_ENVIRONMENT',
+          description: "Which Graph environment to hit: 'test' (sandbox, default) or 'live' (production). Must be flipped to 'live' before onboarding real customers.",
+          configured: true,
+          tail: graphEnv, // not a secret \u2014 display the actual value
+          mode: graphEnv === 'live' ? 'live' : 'test',
+        },
+        {
+          name: 'GRAPH_WEBHOOK_VERIFY',
+          description: "Signature-verification gate: '1' = enforce HMAC-SHA256 check (default), '0' = accept unsigned webhooks (use ONLY during initial Graph handshake until the signing scheme is confirmed).",
+          configured: true,
+          tail: graphWebhookVerify,
           mode: null,
         },
       ],

@@ -40,7 +40,10 @@ const ALLOWED_KEYS = [
   'GRAPH_API_KEY',
   'GRAPH_WEBHOOK_SECRET',
   'GRAPH_API_BASE',
+  'GRAPH_ENVIRONMENT',
+  'GRAPH_WEBHOOK_VERIFY',
   'SENTRY_DSN',
+  'NEXT_PUBLIC_SENTRY_DSN',
 ] as const;
 type AllowedKey = (typeof ALLOWED_KEYS)[number];
 const ALLOWED_KEY_SET = new Set<string>(ALLOWED_KEYS);
@@ -50,14 +53,39 @@ const ENV_FILE_PATH =
 const PM2_PATH = process.env['FRENZPAY_PM2_PATH'] ?? '/usr/bin/pm2';
 const PM2_ECOSYSTEM = process.env['FRENZPAY_ECOSYSTEM'] ?? '/home/frenzpay/ecosystem.config.js';
 
-const Schema = z.object({
-  name: z.string().refine((v) => ALLOWED_KEY_SET.has(v), 'Unknown or disallowed env key'),
-  value: z
-    .string()
-    .min(8, 'Value must be at least 8 characters')
-    .max(4096, 'Value too long')
-    .refine((v) => !/[\r\n\0]/.test(v), 'Value cannot contain newlines or NUL'),
-});
+// Short-value keys: these are config flags (not secrets) and legitimately
+// contain just a few characters ("test"/"live", "0"/"1", etc.). For real
+// secrets we still enforce the 8-char minimum.
+const SHORT_VALUE_KEYS = new Set<string>([
+  'GRAPH_ENVIRONMENT',
+  'GRAPH_WEBHOOK_VERIFY',
+]);
+
+const Schema = z
+  .object({
+    name: z.string().refine((v) => ALLOWED_KEY_SET.has(v), 'Unknown or disallowed env key'),
+    value: z
+      .string()
+      .min(1, 'Value is required')
+      .max(4096, 'Value too long')
+      .refine((v) => !/[\r\n\0]/.test(v), 'Value cannot contain newlines or NUL'),
+  })
+  .refine(
+    ({ name, value }) => SHORT_VALUE_KEYS.has(name) || value.length >= 8,
+    { message: 'Secret values must be at least 8 characters', path: ['value'] },
+  )
+  .refine(
+    ({ name, value }) => {
+      if (name === 'GRAPH_ENVIRONMENT') {
+        return value === 'test' || value === 'live';
+      }
+      if (name === 'GRAPH_WEBHOOK_VERIFY') {
+        return value === '0' || value === '1';
+      }
+      return true;
+    },
+    { message: 'Invalid value for this config key', path: ['value'] },
+  );
 
 /** Return last 4 chars of a secret, or null if shorter than 8. */
 function maskTail(value: string): string | null {

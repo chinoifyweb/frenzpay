@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 import { ensureBridgeCustomer } from '@/lib/bridge-provision';
+import { syncUserToGraph, uploadKycDocsToGraph } from '@/lib/graph-sync';
 import { logger } from '@frenzpay/logger';
 import { sendKYCApprovedEmail, sendKYCRejectedEmail } from '@/lib/email';
 
@@ -130,15 +131,28 @@ export async function PATCH(
     );
   }
 
-  // ── Post-commit: create Bridge customer on T2+ approval ────────────────────
-  // We only create the Bridge customer record here (identity-level), NOT a
-  // virtual account. The user then picks which currency to activate (USD /
-  // EUR / …) themselves from /dashboard/wallet, and the per-currency
-  // virtual account is provisioned at that point via /api/accounts/activate.
-  // This keeps the customer in control of which rails they want and avoids
-  // creating USD accounts for users who only care about EUR (or vice versa).
+  // ── Post-commit: provision external-provider records ─────────────────────
+  //
+  // Two independent rails get primed here:
+  //   1. Bridge — USDC settlement (USD/EUR → USDC). Creates a Bridge Customer
+  //      identity record only, no virtual account.
+  //   2. Graph — NGN settlement (USD/EUR → NGN). Creates a Graph Person and
+  //      pushes the KYC documents we already hold. No bank_account yet.
+  //
+  // After this step the customer can activate per-currency accounts from
+  // /dashboard/wallet — our account activation endpoint then issues the
+  // appropriate Bridge virtual account or Graph bank_account depending on
+  // which rail they chose.
+  //
+  // Each rail is independent: if Graph fails, Bridge can still succeed and
+  // vice versa. Any failures are logged + returned in the response so the
+  // admin knows to retry; they never block the KYC approval itself.
   let bridgeResult: Awaited<ReturnType<typeof ensureBridgeCustomer>> | null = null;
+  let graphResult: Awaited<ReturnType<typeof syncUserToGraph>> | null = null;
+  let graphDocResult: Awaited<ReturnType<typeof uploadKycDocsToGraph>> | null = null;
+
   if (action === 'approve' && (submission.tier === 'T2' || submission.tier === 'T3')) {
+    // Bridge (independent of Graph failures)
     try {
       bridgeResult = await ensureBridgeCustomer(submission.userId, {
         triggeredBy: 'admin',
@@ -148,11 +162,6 @@ export async function PATCH(
         logger.warn(
           { userId: submission.userId, bridgeError: bridgeResult.error },
           'KYC approved but Bridge customer creation failed; ops can retry',
-        );
-      } else {
-        logger.info(
-          { userId: submission.userId, customerCreated: bridgeResult.created },
-          'KYC approved; Bridge customer ready for currency activation',
         );
       }
     } catch (err) {
@@ -166,6 +175,51 @@ export async function PATCH(
         error: 'Unexpected error creating Bridge customer',
       };
     }
+
+    // Graph — Person + KYC documents. Fire both sequentially because docs
+    // need the person id to attach to. Fire-and-forget the docs step after
+    // the sync so we respond quickly even if Graph is slow on the upload.
+    try {
+      graphResult = await syncUserToGraph(submission.userId);
+      if (graphResult.ok && graphResult.graphPersonId) {
+        // Kick off doc upload — non-blocking, log failures for ops
+        void uploadKycDocsToGraph(submission.id)
+          .then((r) => {
+            graphDocResult = r;
+            if (!r.ok) {
+              logger.warn(
+                { userId: submission.userId, failures: r.failures.length, uploaded: r.uploaded.length },
+                'Graph KYC doc upload had failures',
+              );
+            } else {
+              logger.info(
+                { userId: submission.userId, uploaded: r.uploaded.length },
+                'Graph KYC docs uploaded',
+              );
+            }
+          })
+          .catch((err) =>
+            logger.error(
+              { userId: submission.userId, err: err instanceof Error ? err.message : err },
+              'Graph KYC doc upload threw',
+            ),
+          );
+      } else {
+        logger.warn(
+          { userId: submission.userId, error: graphResult.error },
+          'Graph Person sync failed post-KYC; ops can retry',
+        );
+      }
+    } catch (err) {
+      logger.error(
+        { userId: submission.userId, err: err instanceof Error ? err.message : String(err) },
+        'Unhandled error during Graph Person sync post-KYC',
+      );
+      graphResult = {
+        ok: false,
+        error: 'Unexpected error syncing to Graph',
+      };
+    }
   }
 
   return NextResponse.json({
@@ -177,6 +231,16 @@ export async function PATCH(
             ok: bridgeResult.ok,
             customerCreated: bridgeResult.created,
             error: bridgeResult.error ?? null,
+          },
+        }
+      : {}),
+    ...(graphResult
+      ? {
+          graph: {
+            ok: graphResult.ok,
+            personCreated: graphResult.created ?? false,
+            graphPersonId: graphResult.graphPersonId ?? null,
+            error: graphResult.error ?? null,
           },
         }
       : {}),
