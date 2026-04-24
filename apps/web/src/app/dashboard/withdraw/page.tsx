@@ -1,26 +1,388 @@
-'use client'
+'use client';
 
 /**
  * /dashboard/withdraw
  *
- * NGN bank withdrawals are temporarily unavailable — the Paystack rail was
- * removed. A replacement provider (Bridge NGN / Yellow Card) will be wired up
- * before this page is re-enabled.
+ * Full NGN withdrawal flow on the Graph rail:
+ *   1. Pick amount in USD.
+ *   2. Pick or create a beneficiary (Nigerian bank) — on-blur resolve-bank-account
+ *      confirms the account-holder name before saving.
+ *   3. See a live FX quote (USD → NGN) with markup from platform settings.
+ *   4. Confirm. Back-end holds the USD, creates a PENDING Withdrawal; an admin
+ *      reviews within 24h and releases the payout via Graph (NIP transfer).
  */
 
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { ArrowLeft, Clock, ShieldCheck } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  ChevronRight,
+  Loader2,
+  Plus,
+  ShieldCheck,
+  Wallet,
+} from 'lucide-react';
 
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { useMe } from '@/hooks/use-me'
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { useMe } from '@/hooks/use-me';
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+interface Bank {
+  bank_code: string;
+  bank_name: string;
+  country: string;
+}
+
+interface Beneficiary {
+  id: string;
+  bankCode: string | null;
+  bankName: string | null;
+  accountNumber: string | null;
+  accountName: string | null;
+  coolingPeriodEndsAt: string | null;
+}
+
+interface FxQuote {
+  midRate: number;
+  markupBps: number;
+  effectiveRate: number;
+  rate_id: string | null;
+  expires_at: string | null;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function fmtUsd(cents: number): string {
+  return `$${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+function fmtNgn(kobo: number): string {
+  return `\u20a6${(kobo / 100).toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────
+
+type Stage = 'form' | 'submitted';
 
 export default function WithdrawPage() {
-  const router = useRouter()
-  const { me } = useMe()
-  const tier = me?.kycTier ?? 'T0'
+  const router = useRouter();
+  const { me, loading: meLoading } = useMe();
+  const tier = me?.kycTier ?? 'T0';
+  const kycApproved = tier === 'T2' || tier === 'T3';
+
+  // Beneficiary state
+  const [banks, setBanks] = useState<Bank[]>([]);
+  const [banksLoading, setBanksLoading] = useState(true);
+  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([]);
+  const [showNewBeneficiary, setShowNewBeneficiary] = useState(false);
+
+  // New-beneficiary form
+  const [newBankCode, setNewBankCode] = useState('');
+  const [newAccountNumber, setNewAccountNumber] = useState('');
+  const [newAccountName, setNewAccountName] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  const [savingBeneficiary, setSavingBeneficiary] = useState(false);
+
+  const [selectedBeneficiaryId, setSelectedBeneficiaryId] = useState<string>('');
+
+  // Amount + quote
+  const [amountUsd, setAmountUsd] = useState('');
+  const [quote, setQuote] = useState<FxQuote | null>(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
+
+  // Submit
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [stage, setStage] = useState<Stage>('form');
+  const [submittedWithdrawal, setSubmittedWithdrawal] = useState<{
+    id: string;
+    destAmountKobo: string;
+    sourceAmountCents: string;
+  } | null>(null);
+
+  // ── Initial loads ───────────────────────────────────────────────────────
+  const fetchBanks = useCallback(async () => {
+    setBanksLoading(true);
+    try {
+      const res = await fetch('/api/banks', { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Could not load banks');
+      setBanks(json.banks ?? []);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load banks');
+    } finally {
+      setBanksLoading(false);
+    }
+  }, []);
+
+  const fetchBeneficiaries = useCallback(async () => {
+    try {
+      const res = await fetch('/api/beneficiaries', { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? 'Could not load beneficiaries');
+      const bens: Beneficiary[] = (json.beneficiaries ?? []).filter(
+        (b: Beneficiary) => b.bankCode && b.accountNumber,
+      );
+      setBeneficiaries(bens);
+      if (bens.length > 0 && !selectedBeneficiaryId) {
+        setSelectedBeneficiaryId(bens[0].id);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to load beneficiaries');
+    }
+  }, [selectedBeneficiaryId]);
+
+  useEffect(() => {
+    void fetchBanks();
+    void fetchBeneficiaries();
+  }, [fetchBanks, fetchBeneficiaries]);
+
+  // Refresh FX quote when amount changes (debounced)
+  useEffect(() => {
+    if (!amountUsd || parseFloat(amountUsd) <= 0) {
+      setQuote(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setQuoteLoading(true);
+      try {
+        const res = await fetch('/api/fx/quote?base=USD&quote=NGN', { cache: 'no-store' });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error ?? 'FX fetch failed');
+        setQuote({
+          midRate: json.midRate,
+          markupBps: json.markupBps,
+          effectiveRate: json.effectiveRate,
+          rate_id: json.rate_id ?? null,
+          expires_at: json.expires_at ?? null,
+        });
+      } catch (err) {
+        setQuote(null);
+        toast.error(err instanceof Error ? err.message : 'Rate fetch failed');
+      } finally {
+        setQuoteLoading(false);
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [amountUsd]);
+
+  // ── Resolve-on-blur for new-beneficiary form ─────────────────────────────
+  async function resolveAccount() {
+    setResolveError(null);
+    if (!newBankCode || !/^\d{10}$/.test(newAccountNumber)) return;
+    setResolving(true);
+    try {
+      const res = await fetch('/api/banks/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bank_code: newBankCode, account_number: newAccountNumber }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setResolveError(json.error ?? 'Could not verify account');
+        setNewAccountName('');
+        return;
+      }
+      setNewAccountName(json.account_name ?? '');
+    } catch {
+      setResolveError('Network error verifying account');
+    } finally {
+      setResolving(false);
+    }
+  }
+
+  async function saveBeneficiary() {
+    if (!newBankCode || !/^\d{10}$/.test(newAccountNumber)) {
+      toast.error('Pick a bank and enter a 10-digit account number');
+      return;
+    }
+    setSavingBeneficiary(true);
+    try {
+      const bank = banks.find((b) => b.bank_code === newBankCode);
+      const res = await fetch('/api/beneficiaries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bank_code: newBankCode,
+          account_number: newAccountNumber,
+          account_name: newAccountName || undefined,
+          bank_name: bank?.bank_name,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok && res.status !== 409) throw new Error(json.error ?? `Save failed (${res.status})`);
+      toast.success('Beneficiary saved');
+      setShowNewBeneficiary(false);
+      setNewBankCode('');
+      setNewAccountNumber('');
+      setNewAccountName('');
+      setResolveError(null);
+      await fetchBeneficiaries();
+      if (json.beneficiary?.id) setSelectedBeneficiaryId(json.beneficiary.id);
+      else if (json.beneficiaryId) setSelectedBeneficiaryId(json.beneficiaryId);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingBeneficiary(false);
+    }
+  }
+
+  // ── Submit withdrawal ────────────────────────────────────────────────────
+  const selectedBeneficiary = useMemo(
+    () => beneficiaries.find((b) => b.id === selectedBeneficiaryId) ?? null,
+    [beneficiaries, selectedBeneficiaryId],
+  );
+
+  async function submitWithdrawal() {
+    if (!selectedBeneficiary) {
+      toast.error('Pick a beneficiary first');
+      return;
+    }
+    const cents = Math.round(parseFloat(amountUsd || '0') * 100);
+    if (!cents || cents <= 0) {
+      toast.error('Enter a valid USD amount');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/withdrawals', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          beneficiaryId: selectedBeneficiary.id,
+          sourceAmountCents: cents,
+          rate_id: quote?.rate_id ?? undefined,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `Submission failed (${res.status})`);
+      setSubmittedWithdrawal({
+        id: json.withdrawal.id,
+        destAmountKobo: json.withdrawal.destAmountKobo,
+        sourceAmountCents: json.withdrawal.sourceAmountCents,
+      });
+      setStage('submitted');
+      toast.success('Withdrawal submitted for review');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Submission failed');
+    } finally {
+      setSubmitting(false);
+      setConfirmOpen(false);
+    }
+  }
+
+  // ── Render: KYC gate ────────────────────────────────────────────────────
+  if (meLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!kycApproved) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-6">
+        <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard')}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Back to overview
+        </Button>
+        <Card className="border-dashed">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <ShieldCheck className="h-7 w-7" />
+            </div>
+            <div className="space-y-2 max-w-md">
+              <h2 className="text-lg font-semibold">Complete KYC to withdraw</h2>
+              <p className="text-sm text-muted-foreground">
+                You need to be verified (tier 2) before we can release funds to a Nigerian bank.
+                It&apos;s a quick one-time step.
+              </p>
+            </div>
+            <Badge variant="secondary" className="gap-1.5">
+              <ShieldCheck className="h-3 w-3" />
+              You&apos;re currently {tier}
+            </Badge>
+            <Link href="/dashboard/kyc">
+              <Button>Start verification</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Render: submitted confirmation ──────────────────────────────────────
+  if (stage === 'submitted' && submittedWithdrawal) {
+    return (
+      <div className="mx-auto w-full max-w-xl space-y-6">
+        <Card className="border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20">
+          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-600">
+              <CheckCircle2 className="h-7 w-7" />
+            </div>
+            <div className="space-y-2 max-w-md">
+              <h2 className="text-lg font-semibold">Submitted for review</h2>
+              <p className="text-sm text-muted-foreground">
+                We&apos;re holding{' '}
+                {fmtUsd(Number(submittedWithdrawal.sourceAmountCents))} and will release{' '}
+                {fmtNgn(Number(submittedWithdrawal.destAmountKobo))} to your bank once an
+                admin approves the request \u2014 usually within 24h.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Reference: <span className="font-mono">{submittedWithdrawal.id.slice(0, 8)}</span>
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStage('form')}>
+                New withdrawal
+              </Button>
+              <Link href="/dashboard/activity">
+                <Button>View activity</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Render: main form ───────────────────────────────────────────────────
+  const amountCents = Math.round(parseFloat(amountUsd || '0') * 100);
+  const estimatedKobo =
+    quote && amountCents > 0 ? Math.floor(amountCents * quote.effectiveRate) : 0;
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-6">
@@ -32,41 +394,273 @@ export default function WithdrawPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Withdraw to Nigerian bank</h1>
         <p className="text-sm text-muted-foreground">
-          Send NGN from your wallet to any Nigerian bank account.
+          Send NGN from your USD balance to any Nigerian bank account. Admin-reviewed within 24h.
         </p>
       </div>
 
-      <Card className="border-dashed">
-        <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-            <Clock className="h-7 w-7" />
+      {/* Amount */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Wallet className="h-4 w-4" />
+            Amount
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="amountUsd">USD amount</Label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                $
+              </span>
+              <Input
+                id="amountUsd"
+                type="number"
+                step="0.01"
+                min="1"
+                inputMode="decimal"
+                value={amountUsd}
+                onChange={(e) => setAmountUsd(e.target.value)}
+                className="pl-7 text-lg font-medium"
+                placeholder="100.00"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">Minimum $10</p>
           </div>
-          <div className="space-y-1 max-w-sm">
-            <h2 className="text-lg font-semibold">NGN withdrawals temporarily paused</h2>
-            <p className="text-sm text-muted-foreground">
-              We&apos;re switching payout providers. Your existing balance stays put &mdash; withdrawals will reopen once the new rail is live.
+
+          {quoteLoading && (
+            <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Fetching rate\u2026
             </p>
-          </div>
-          {tier === 'T0' || tier === 'T1' ? (
-            <>
-              <Badge variant="secondary" className="gap-1.5">
-                <ShieldCheck className="h-3 w-3" />
-                You&apos;re currently {tier}
-              </Badge>
-              <p className="text-xs text-muted-foreground max-w-sm">
-                In the meantime, finish T2 verification so you&apos;re ready when withdrawals reopen.
-              </p>
-              <Button asChild>
-                <Link href="/dashboard/kyc">{tier === 'T0' ? 'Start verification' : 'Upgrade to T2'}</Link>
-              </Button>
-            </>
-          ) : (
-            <Button variant="outline" asChild>
-              <Link href="/dashboard/activity">View past withdrawals</Link>
-            </Button>
+          )}
+
+          {quote && amountCents > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Mid rate</span>
+                <span className="font-mono">1 USD = \u20a6{quote.midRate.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Our markup</span>
+                <span className="font-mono">{quote.markupBps} bps ({(quote.markupBps / 100).toFixed(2)}%)</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Effective rate</span>
+                <span className="font-mono">1 USD = \u20a6{quote.effectiveRate.toFixed(2)}</span>
+              </div>
+              <Separator className="my-2" />
+              <div className="flex items-center justify-between">
+                <span className="font-medium">You receive</span>
+                <span className="text-lg font-bold">{fmtNgn(estimatedKobo)}</span>
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Beneficiary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Where should we send it?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {beneficiaries.length > 0 ? (
+            <div className="space-y-2">
+              {beneficiaries.map((b) => (
+                <button
+                  key={b.id}
+                  type="button"
+                  onClick={() => setSelectedBeneficiaryId(b.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                    selectedBeneficiaryId === b.id
+                      ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
+                      : 'hover:bg-muted/50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-sm">{b.accountName ?? '\u2014'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {b.bankName ?? b.bankCode} \u2022 {b.accountNumber}
+                      </p>
+                    </div>
+                    {b.coolingPeriodEndsAt && new Date(b.coolingPeriodEndsAt) > new Date() && (
+                      <Badge variant="secondary" className="text-[10px]">Cool-down</Badge>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No saved beneficiaries yet.</p>
+          )}
+
+          <Button
+            variant="outline"
+            onClick={() => setShowNewBeneficiary(true)}
+            className="w-full"
+          >
+            <Plus className="mr-1.5 h-4 w-4" />
+            Add new beneficiary
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Submit */}
+      <Button
+        className="w-full h-11"
+        disabled={
+          !selectedBeneficiary ||
+          amountCents <= 0 ||
+          !!quoteLoading ||
+          submitting
+        }
+        onClick={() => setConfirmOpen(true)}
+      >
+        Continue
+        <ChevronRight className="ml-1 h-4 w-4" />
+      </Button>
+
+      {/* New beneficiary dialog */}
+      <Dialog open={showNewBeneficiary} onOpenChange={setShowNewBeneficiary}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add beneficiary</DialogTitle>
+            <DialogDescription>
+              The account holder&apos;s name will auto-populate once we verify the bank + account number.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Bank</Label>
+              <Select
+                value={newBankCode}
+                onValueChange={(v) => {
+                  setNewBankCode(v);
+                  setNewAccountName('');
+                  setResolveError(null);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={banksLoading ? 'Loading banks\u2026' : 'Choose a bank'} />
+                </SelectTrigger>
+                <SelectContent className="max-h-[300px]">
+                  {banks.map((b) => (
+                    <SelectItem key={b.bank_code} value={b.bank_code}>
+                      {b.bank_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="acct">Account number</Label>
+              <Input
+                id="acct"
+                value={newAccountNumber}
+                onChange={(e) => {
+                  setNewAccountNumber(e.target.value.replace(/\D/g, '').slice(0, 10));
+                  setNewAccountName('');
+                  setResolveError(null);
+                }}
+                onBlur={resolveAccount}
+                placeholder="0123456789"
+                className="font-mono"
+                maxLength={10}
+              />
+            </div>
+
+            {resolving && (
+              <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Verifying account\u2026
+              </p>
+            )}
+            {newAccountName && !resolving && (
+              <Alert>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                <AlertDescription>
+                  <span className="font-medium">{newAccountName}</span>
+                </AlertDescription>
+              </Alert>
+            )}
+            {resolveError && (
+              <Alert variant="destructive">
+                <AlertDescription>{resolveError}</AlertDescription>
+              </Alert>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowNewBeneficiary(false)}
+              disabled={savingBeneficiary}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={saveBeneficiary}
+              disabled={
+                savingBeneficiary ||
+                !newBankCode ||
+                !/^\d{10}$/.test(newAccountNumber) ||
+                !newAccountName
+              }
+            >
+              {savingBeneficiary && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Save beneficiary
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm withdrawal</DialogTitle>
+            <DialogDescription>
+              Double-check the amount and the bank account before submitting.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedBeneficiary && (
+            <div className="space-y-3 text-sm">
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">From</span>
+                  <span className="font-medium">{fmtUsd(amountCents)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Recipient gets</span>
+                  <span className="font-medium">{fmtNgn(estimatedKobo)}</span>
+                </div>
+              </div>
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
+                <p className="font-medium">{selectedBeneficiary.accountName ?? '\u2014'}</p>
+                <p className="text-xs text-muted-foreground">
+                  {selectedBeneficiary.bankName ?? selectedBeneficiary.bankCode}
+                </p>
+                <p className="font-mono text-xs">{selectedBeneficiary.accountNumber}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Once you submit we hold the USD and an admin reviews the request within 24h.
+                The NGN releases to your bank after approval.
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button onClick={submitWithdrawal} disabled={submitting}>
+              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Submit for review
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-  )
+  );
 }

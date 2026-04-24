@@ -304,6 +304,25 @@ function ReceivePageInner() {
               Refresh
             </Button>
           </div>
+
+          {/* Prefer crypto? */}
+          <Card className="mt-4">
+            <CardContent className="flex flex-col items-start justify-between gap-3 py-5 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-sm font-medium">Prefer crypto?</p>
+                <p className="text-xs text-muted-foreground">
+                  Get a dedicated USDC / USDT address on ERC20, TRC20, or Polygon.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push('/dashboard/wallet/crypto')}
+              >
+                Get a crypto address
+              </Button>
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
