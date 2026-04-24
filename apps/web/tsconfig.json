@@ -71,6 +71,9 @@
       ],
       "@frenzpay/providers/bridge-cards": [
         "../../packages/providers/src/bridge-cards.ts"
+      ],
+      "@frenzpay/providers/graph": [
+        "../../packages/providers/src/graph.ts"
       ]
     }
   },

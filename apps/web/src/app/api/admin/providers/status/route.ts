@@ -29,7 +29,7 @@ interface KeyInfo {
 }
 
 interface ProviderStatus {
-  id: 'bridge' | 'sentry';
+  id: 'bridge' | 'graph' | 'sentry';
   name: string;
   purpose: string;
   /** Where the admin should go to get / rotate these keys */
@@ -62,6 +62,8 @@ export async function GET() {
 
   const bridgeKey = process.env['BRIDGE_API_KEY'];
   const bridgeWebhook = process.env['BRIDGE_WEBHOOK_SECRET'];
+  const graphKey = process.env['GRAPH_API_KEY'];
+  const graphWebhook = process.env['GRAPH_WEBHOOK_SECRET'];
   const sentryDsn = process.env['SENTRY_DSN'];
 
   const providers: ProviderStatus[] = [
@@ -90,6 +92,36 @@ export async function GET() {
           description: 'HMAC-SHA256 shared secret used to verify Bridge webhooks',
           configured: !!bridgeWebhook,
           tail: maskTail(bridgeWebhook),
+          mode: null,
+        },
+      ],
+    },
+    {
+      id: 'graph',
+      name: 'Graph',
+      purpose: 'USD / EUR virtual accounts that settle to NGN (Nigerian rail)',
+      dashboardUrl: 'https://app.useoval.com',
+      status: graphKey && graphWebhook ? 'ok' : graphKey || graphWebhook ? 'partial' : 'missing',
+      blocks: [
+        'USD \u2192 NGN virtual account provisioning',
+        'EUR \u2192 NGN virtual account provisioning',
+        'Graph-issued virtual / physical cards',
+        'NGN payouts to Nigerian banks + mobile money',
+      ],
+      testable: !!graphKey,
+      keys: [
+        {
+          name: 'GRAPH_API_KEY',
+          description: 'Bearer token from Graph dashboard \u2192 Developers \u2192 API Keys. Sandbox + live use the same URL; the key determines the env.',
+          configured: !!graphKey,
+          tail: maskTail(graphKey),
+          mode: null,
+        },
+        {
+          name: 'GRAPH_WEBHOOK_SECRET',
+          description: 'Shared secret used to verify incoming Graph webhooks (HMAC-SHA256 default).',
+          configured: !!graphWebhook,
+          tail: maskTail(graphWebhook),
           mode: null,
         },
       ],

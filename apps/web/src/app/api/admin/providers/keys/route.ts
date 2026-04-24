@@ -37,6 +37,9 @@ const ALLOWED_KEYS = [
   'BRIDGE_WEBHOOK_SECRET',
   'BRIDGE_API_BASE',
   'BRIDGE_WEBHOOK_PUBLIC_KEY',
+  'GRAPH_API_KEY',
+  'GRAPH_WEBHOOK_SECRET',
+  'GRAPH_API_BASE',
   'SENTRY_DSN',
 ] as const;
 type AllowedKey = (typeof ALLOWED_KEYS)[number];

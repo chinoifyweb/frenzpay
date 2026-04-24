@@ -17,6 +17,10 @@
     "./bridge-cards": {
       "types": "./dist/bridge-cards.d.ts",
       "default": "./src/bridge-cards.ts"
+    },
+    "./graph": {
+      "types": "./dist/graph.d.ts",
+      "default": "./src/graph.ts"
     }
   },
   "scripts": {

@@ -580,6 +580,19 @@ model BridgeWebhookEvent {
   @@map("bridge_webhook_events")
 }
 
+// Dedup table for Graph webhooks (NGN settlement rail)
+model GraphWebhookEvent {
+  id          String    @id                     // Graph's event id (or our hash fallback)
+  eventType   String    @map("event_type")
+  payload     Json      @db.JsonB
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@index([eventType])
+  @@map("graph_webhook_events")
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // P2P TRANSFERS
 // ─────────────────────────────────────────────────────────────────────────────

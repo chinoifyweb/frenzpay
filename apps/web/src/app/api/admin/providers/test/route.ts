@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 
 const Schema = z.object({
-  provider: z.enum(['bridge']),
+  provider: z.enum(['bridge', 'graph']),
 });
 
 interface TestResult {
@@ -95,6 +95,73 @@ async function testBridge(): Promise<TestResult> {
   }
 }
 
+/**
+ * Graph health probe. We try GET /health first — if that 404s we fall back
+ * to a lightweight list endpoint with limit=1 that any valid key can call.
+ */
+async function testGraph(): Promise<TestResult> {
+  const apiKey = process.env['GRAPH_API_KEY'];
+  const base = process.env['GRAPH_API_BASE'] ?? 'https://api.useoval.com';
+
+  if (!apiKey) {
+    return {
+      ok: false,
+      statusCode: null,
+      latencyMs: 0,
+      message: 'GRAPH_API_KEY is not configured on the server.',
+    };
+  }
+
+  const endpoints = ['/v1/health', '/health', '/v1/banks?limit=1', '/v1/people?limit=1'];
+  let lastStatus: number | null = null;
+  let lastMsg = '';
+  const started = Date.now();
+
+  for (const path of endpoints) {
+    try {
+      const res = await fetch(`${base}${path}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+      });
+      lastStatus = res.status;
+      if (res.status === 401 || res.status === 403) {
+        return {
+          ok: false,
+          statusCode: res.status,
+          latencyMs: Date.now() - started,
+          message: 'Graph rejected the key. Verify GRAPH_API_KEY matches your dashboard.',
+        };
+      }
+      if (res.status >= 200 && res.status < 300) {
+        return {
+          ok: true,
+          statusCode: res.status,
+          latencyMs: Date.now() - started,
+          message: `Graph authentication succeeded (${path}).`,
+        };
+      }
+      // 404 etc \u2014 try next endpoint
+      lastMsg = `HTTP ${res.status} on ${path}`;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        statusCode: null,
+        latencyMs: Date.now() - started,
+        message: `Network error contacting Graph: ${msg}`,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    statusCode: lastStatus,
+    latencyMs: Date.now() - started,
+    message: `None of the probe endpoints returned 2xx. Last: ${lastMsg}.`,
+  };
+}
+
 export async function POST(req: NextRequest) {
   const { session } = await requireSession();
   if (session.role !== 'admin') {
@@ -119,6 +186,8 @@ export async function POST(req: NextRequest) {
   let result: TestResult;
   if (provider === 'bridge') {
     result = await testBridge();
+  } else if (provider === 'graph') {
+    result = await testGraph();
   } else {
     result = {
       ok: false,
