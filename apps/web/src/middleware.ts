@@ -63,6 +63,25 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Resolve the public-facing base URL so redirects never leak the
+  // internal proxy target (e.g. localhost:3200) back to the browser.
+  // Prefer, in order:
+  //   1. x-forwarded-proto/host headers (set by OLS)
+  //   2. the raw host header
+  //   3. NEXT_PUBLIC_APP_URL env fallback
+  //   4. request.url (last resort — can contain 127.0.0.1:3200)
+  function publicUrl(path: string): URL {
+    const fwdProto = request.headers.get('x-forwarded-proto');
+    const fwdHost = request.headers.get('x-forwarded-host');
+    const host = fwdHost ?? request.headers.get('host');
+    if (host && !host.startsWith('127.0.0.1') && !host.startsWith('localhost')) {
+      return new URL(path, `${fwdProto ?? 'https'}://${host}`);
+    }
+    const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+    if (envUrl) return new URL(path, envUrl);
+    return new URL(path, request.url);
+  }
+
   // Unseal cookie
   const rawCookie = request.cookies.get(SESSION_COOKIE_NAME)?.value;
   let session: CookieSession | null = null;
@@ -82,7 +101,7 @@ export async function middleware(request: NextRequest) {
 
   // ── Redirect authenticated users away from auth pages ─────────────────────
   if (isAuthenticated && AUTH_PAGES.has(pathname)) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(publicUrl('/dashboard'));
   }
 
   // ── Admin area uses its own login page ──────────────────────────────────
@@ -91,10 +110,9 @@ export async function middleware(request: NextRequest) {
   // a dedicated surface that checks the admin_users table.
   if (pathname.startsWith('/admin')) {
     if (!isAuthenticated || session!.role !== 'admin') {
-      const loginUrl = request.nextUrl.clone();
-      loginUrl.pathname = '/admin-login';
-      if (pathname !== '/admin') loginUrl.searchParams.set('next', pathname);
-      return NextResponse.redirect(loginUrl);
+      const url = publicUrl('/admin-login');
+      if (pathname !== '/admin') url.searchParams.set('next', pathname);
+      return NextResponse.redirect(url);
     }
     // Authenticated admin — fall through to the downstream response below.
   }
@@ -102,10 +120,9 @@ export async function middleware(request: NextRequest) {
   // ── Protect routes that require authentication (customer side) ────────────
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (isProtected && !isAuthenticated) {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = '/login';
-    loginUrl.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(loginUrl);
+    const url = publicUrl('/login');
+    url.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(url);
   }
 
   if (!isAuthenticated) return NextResponse.next();
@@ -115,11 +132,15 @@ export async function middleware(request: NextRequest) {
 
   // ── KYC gates ─────────────────────────────────────────────────────────────
   if (KYC_T1_PREFIXES.some((p) => pathname.startsWith(p)) && kycTier < 1) {
-    return NextResponse.redirect(new URL('/dashboard/kyc?required=1', request.url));
+    const url = publicUrl('/dashboard/kyc');
+    url.searchParams.set('required', '1');
+    return NextResponse.redirect(url);
   }
 
   if (KYC_T2_PREFIXES.some((p) => pathname.startsWith(p)) && kycTier < 2) {
-    return NextResponse.redirect(new URL('/dashboard/kyc?required=2', request.url));
+    const url = publicUrl('/dashboard/kyc');
+    url.searchParams.set('required', '2');
+    return NextResponse.redirect(url);
   }
 
   // ── Propagate user context to downstream ─────────────────────────────────
