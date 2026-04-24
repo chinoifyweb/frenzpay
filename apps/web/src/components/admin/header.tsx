@@ -1,6 +1,8 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { toast } from 'sonner'
 import {
   LayoutDashboard,
   Users,
@@ -10,6 +12,8 @@ import {
   Settings,
   LogOut,
   ChevronRight,
+  Zap,
+  AlertTriangle,
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -20,21 +24,42 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { AdminMobileSidebar } from './sidebar'
-import Link from 'next/link'
+import { useMe, formatDisplayName, formatInitials } from '@/hooks/use-me'
 
 const pageTitles: Record<string, { title: string; icon: React.ComponentType<{ className?: string }> }> = {
-  '/admin': { title: 'Dashboard', icon: LayoutDashboard },
-  '/admin/users': { title: 'User Management', icon: Users },
-  '/admin/kyc': { title: 'KYC Verification Queue', icon: ShieldCheck },
-  '/admin/transactions': { title: 'Transaction Monitor', icon: ArrowUpDown },
-  '/admin/withdrawals': { title: 'Withdrawal Management', icon: ArrowUpRight },
-  '/admin/settings': { title: 'Platform Settings', icon: Settings },
+  '/admin':              { title: 'Dashboard',              icon: LayoutDashboard },
+  '/admin/users':        { title: 'User Management',        icon: Users },
+  '/admin/kyc':          { title: 'KYC Verification Queue', icon: ShieldCheck },
+  '/admin/transactions': { title: 'Transaction Monitor',    icon: ArrowUpDown },
+  '/admin/withdrawals':  { title: 'Withdrawal Management',  icon: ArrowUpRight },
+  '/admin/providers':    { title: 'Provider Status',        icon: Zap },
+  '/admin/flags':        { title: 'Risk & Fraud Flags',     icon: AlertTriangle },
+  '/admin/settings':     { title: 'Platform Settings',      icon: Settings },
 }
 
 export function AdminHeader() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { me, loading } = useMe()
+
   const page = pageTitles[pathname] || { title: 'Admin', icon: LayoutDashboard }
   const PageIcon = page.icon
+  const displayName = loading ? '…' : formatDisplayName(me) || 'Admin'
+  const initials = formatInitials(me) || 'AD'
+
+  async function logout() {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' })
+      if (!res.ok) throw new Error()
+      // Force a full refresh so the Next.js Router Cache and all cached
+      // server components drop the stale session entirely.
+      try { await fetch('/api/auth/me', { cache: 'no-store' }) } catch { /* ignore */ }
+      router.push('/login')
+      router.refresh()
+    } catch {
+      toast.error('Logout failed. Try again.')
+    }
+  }
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 lg:px-6">
@@ -57,28 +82,34 @@ export function AdminHeader() {
         <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted outline-none">
           <Avatar className="h-7 w-7">
             <AvatarFallback className="bg-orange-600 text-[10px] text-white">
-              SA
+              {initials}
             </AvatarFallback>
           </Avatar>
-          <span className="text-sm font-medium hidden sm:inline">Super Admin</span>
+          <span className="text-sm font-medium hidden sm:inline">{displayName}</span>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem className="cursor-pointer">
-            <Link href="/admin/settings" className="flex items-center gap-2 w-full">
+        <DropdownMenuContent align="end" className="w-56">
+          {me?.email && (
+            <div className="px-2 py-1.5">
+              <p className="truncate text-xs text-muted-foreground">{me.email}</p>
+            </div>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem asChild>
+            <Link href="/admin/settings" className="flex items-center gap-2 w-full cursor-pointer">
               <Settings className="h-4 w-4" />
               Settings
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem className="cursor-pointer">
-            <Link href="/dashboard" className="flex items-center gap-2 w-full">
+          <DropdownMenuItem asChild>
+            <Link href="/dashboard" className="flex items-center gap-2 w-full cursor-pointer">
               <LayoutDashboard className="h-4 w-4" />
-              Back to Dashboard
+              Back to customer dashboard
             </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="cursor-pointer text-destructive">
+          <DropdownMenuItem onClick={logout} className="cursor-pointer text-destructive">
             <LogOut className="h-4 w-4" />
-            Logout
+            Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

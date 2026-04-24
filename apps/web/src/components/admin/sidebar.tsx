@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { useMe, formatDisplayName, formatInitials } from '@/hooks/use-me'
 import {
   LayoutDashboard,
   Users,
@@ -97,23 +99,54 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Admin user info */}
       <div className="p-4">
         <div className="flex items-center gap-3">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-orange-600 text-xs text-white">
-              SA
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Super Admin</p>
-            <p className="text-xs text-muted-foreground truncate">
-              admin@frenzpay.co
-            </p>
-          </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
-            <LogOut className="h-4 w-4" />
-          </Button>
+          <SidebarUserFooter />
         </div>
       </div>
     </div>
+  )
+}
+
+function SidebarUserFooter() {
+  const { me, loading } = useMe()
+  const router = useRouter()
+
+  const displayName = loading ? '…' : formatDisplayName(me) || 'Admin'
+  const initials = formatInitials(me) || 'AD'
+
+  async function logout() {
+    try {
+      const res = await fetch('/api/auth/logout', { method: 'POST' })
+      if (!res.ok) throw new Error()
+      router.push('/login')
+      router.refresh()
+    } catch {
+      toast.error('Logout failed. Try again.')
+    }
+  }
+
+  return (
+    <>
+      <Avatar className="h-8 w-8">
+        <AvatarFallback className="bg-orange-600 text-xs text-white">
+          {initials}
+        </AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{displayName}</p>
+        <p className="text-xs text-muted-foreground truncate">
+          {me?.email ?? ''}
+        </p>
+      </div>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0 hover:bg-destructive/10 hover:text-destructive"
+        onClick={logout}
+        aria-label="Log out"
+      >
+        <LogOut className="h-4 w-4" />
+      </Button>
+    </>
   )
 }
 
