@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Search } from 'lucide-react';
 
 interface UserRow {
   id: string;
@@ -106,16 +107,17 @@ export default function AdminUsersPage() {
                 <TableHead>Tier</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>KYC</TableHead>
-                <TableHead className="text-right">Joined</TableHead>
+                <TableHead>Joined</TableHead>
+                <TableHead className="w-20 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">Loading...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">Loading...</TableCell></TableRow>
               ) : users.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">No users found.</TableCell></TableRow>
+                <TableRow><TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">No users found.</TableCell></TableRow>
               ) : users.map((u) => (
-                <TableRow key={u.id}>
+                <TableRow key={u.id} className="hover:bg-muted/50">
                   <TableCell>
                     <div className="font-medium">{[u.firstName, u.lastName].filter(Boolean).join(' ') || '—'}</div>
                     <div className="text-xs text-muted-foreground">{u.email}</div>
@@ -124,7 +126,15 @@ export default function AdminUsersPage() {
                   <TableCell><Badge variant="secondary">{u.kycTier}</Badge></TableCell>
                   <TableCell><Badge variant="secondary" className={STATUS_STYLES[u.status] ?? ''}>{u.status}</Badge></TableCell>
                   <TableCell><span className="text-xs text-muted-foreground">{u.kycStatus}</span></TableCell>
-                  <TableCell className="text-right text-sm text-muted-foreground">{new Date(u.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{new Date(u.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="text-right">
+                    <Link href={`/admin/users/${u.id}`}>
+                      <Button variant="outline" size="sm">
+                        <Eye className="h-3.5 w-3.5 mr-1" />
+                        View
+                      </Button>
+                    </Link>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
