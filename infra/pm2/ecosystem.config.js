@@ -40,8 +40,20 @@ module.exports = {
       name: 'frenzpay-web',
       script: path.join(STANDALONE_BASE, 'server.js'),
       cwd: STANDALONE_BASE,
-      instances: 2,
-      exec_mode: 'cluster',
+      // Single instance (fork) instead of 2-worker cluster.
+      //
+      // Why: Next.js 15's app-router route manifest loads differently on each
+      // forked worker. Occasionally one worker fails to register new /api/*
+      // routes (serves a prerendered 404 with x-nextjs-prerender:1) while the
+      // sibling worker routes correctly. With 2 instances + round-robin, ~50%
+      // of requests hit the broken worker and 404 unexpectedly after deploy.
+      //
+      // We'll scale back to cluster mode once we either diagnose the Next
+      // worker-state bug or move off this box to a proper multi-node setup.
+      // Memory footprint is ~150 MB per instance, so one worker is plenty for
+      // current traffic.
+      instances: 1,
+      exec_mode: 'fork',
       wait_ready: true,
       listen_timeout: 30000,
       kill_timeout: 10000,
