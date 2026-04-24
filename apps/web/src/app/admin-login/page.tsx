@@ -117,16 +117,15 @@ function AdminLoginInner() {
                   className="pr-10 font-mono"
                   required
                 />
-                <Button
+                <button
                   type="button"
-                  size="icon-xs"
-                  variant="ghost"
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
                   onClick={() => setShowPw((s) => !s)}
+                  tabIndex={-1}
                   aria-label={showPw ? 'Hide password' : 'Show password'}
                 >
-                  {showPw ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                </Button>
+                  {showPw ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
               </div>
             </div>
 
