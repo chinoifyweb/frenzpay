@@ -1,3 +1,6 @@
+// Force dynamic — these routes read cookies/headers and must never be statically rendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * GET  /api/deposit-addresses — list the caller's crypto deposit addresses
  * POST /api/deposit-addresses — provision a new USDC/USDT deposit address

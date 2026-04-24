@@ -1,3 +1,6 @@
+// Force dynamic — these routes read cookies/headers and must never be statically rendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * GET    /api/cards/graph/[id]           — fetch a single Graph card
  * PATCH  /api/cards/graph/[id]           — freeze/unfreeze via status flag

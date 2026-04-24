@@ -1,3 +1,6 @@
+// Force dynamic — these routes read cookies/headers and must never be statically rendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/admin/transactions/[id]/refund
  * Admin operational refund — reverses a POSTED transaction by posting its inverse.

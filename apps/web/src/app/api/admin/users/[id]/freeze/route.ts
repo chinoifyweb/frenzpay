@@ -1,3 +1,6 @@
+// Force dynamic — these routes read cookies/headers and must never be statically rendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/admin/users/[id]/freeze
  * Admin break-glass: freeze a user account (e.g. for sanctions match, fraud

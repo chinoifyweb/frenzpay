@@ -1,3 +1,6 @@
+// Force dynamic — these routes read cookies/headers and must never be statically rendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * GET /api/admin/audit
  *

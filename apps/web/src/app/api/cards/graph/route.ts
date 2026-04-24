@@ -1,3 +1,6 @@
+// Force dynamic — these routes read cookies/headers and must never be statically rendered.
+export const dynamic = 'force-dynamic';
+
 /**
  * POST /api/cards/graph — issue a USD virtual debit card via Graph
  * GET  /api/cards/graph — list Graph-issued cards for the caller
