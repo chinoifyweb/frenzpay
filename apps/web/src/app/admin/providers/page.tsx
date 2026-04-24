@@ -84,14 +84,33 @@ function KeyRow({ k, onSaved }: { k: KeyInfo; onSaved: () => void }) {
     }
     setSaving(true)
     try {
+      // redirect: 'manual' so a stale session doesn't follow a 307 to
+      // /admin-login and hand us back HTML we try to JSON.parse.
       const res = await fetch('/api/admin/providers/keys', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: k.name, value: trimmed }),
+        redirect: 'manual',
       })
+      if (res.type === 'opaqueredirect' || res.status === 0) {
+        throw new Error('Your session expired. Log out and log back in.')
+      }
+      // Server-side PM2 reload can briefly drop the worker and make OLS
+      // emit a plain-text 405 or 502. Detect non-JSON and surface it
+      // cleanly instead of letting res.json() throw "Unexpected token …".
+      const ct = res.headers.get('content-type') ?? ''
+      if (!ct.includes('application/json')) {
+        const text = await res.text().catch(() => '')
+        if (res.status >= 500 || res.status === 405 || res.status === 502 || res.status === 503) {
+          throw new Error(
+            `Server busy while saving (${res.status} ${text.slice(0, 60)}). This usually clears after a few seconds when the app finishes reloading — try again.`,
+          )
+        }
+        throw new Error(`Unexpected response (${res.status} ${text.slice(0, 60)})`)
+      }
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? `Save failed (${res.status})`)
-      toast.success(`${k.name} saved. PM2 reloading…`)
+      toast.success(`${k.name} saved. App will reload in ~${json.reloadEtaSeconds ?? 6}s.`)
       setValue('')
       setEditing(false)
       // The server schedules a reload ~750ms after responding — wait a bit

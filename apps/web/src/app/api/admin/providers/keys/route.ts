@@ -129,11 +129,31 @@ async function writeEnvValue(keyName: string, newValue: string): Promise<void> {
 }
 
 /**
- * Reload PM2 asynchronously — after the HTTP response goes out — so this very
- * request isn't killed by its own reload. Detaches so the child outlives us.
+ * Schedule a debounced PM2 reload so multiple rapid key saves share one
+ * reload instead of thrashing the workers. Each call pushes the reload
+ * RELOAD_DEBOUNCE_MS into the future from "now"; the timer only fires
+ * when the user stops saving.
+ *
+ * Runs after the HTTP response goes out so this very request isn't killed
+ * by its own reload. Detaches so the spawned process outlives us.
+ *
+ * Module-level state: the setTimeout handle lives in a module-scope symbol
+ * on globalThis so it survives across request handler instances within
+ * the same worker. Next.js may re-import the module per request in dev —
+ * so we pin it to a Symbol key on globalThis.
  */
-function schedulePm2Reload(delayMs = 750): void {
-  setTimeout(() => {
+const RELOAD_DEBOUNCE_MS = 4_000; // enough headroom for a human clicking Save several times
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+declare global { var __frenzpay_reload_handle: any | undefined; }
+
+function schedulePm2Reload(): void {
+  // Clear any existing pending reload so this one wins.
+  if (globalThis.__frenzpay_reload_handle) {
+    clearTimeout(globalThis.__frenzpay_reload_handle);
+  }
+  globalThis.__frenzpay_reload_handle = setTimeout(() => {
+    globalThis.__frenzpay_reload_handle = undefined;
     try {
       const child = spawn(
         PM2_PATH,
@@ -148,7 +168,7 @@ function schedulePm2Reload(delayMs = 750): void {
     } catch (err) {
       logger.error({ err: err instanceof Error ? err.message : String(err) }, 'pm2 reload failed to spawn');
     }
-  }, delayMs);
+  }, RELOAD_DEBOUNCE_MS);
 }
 
 export async function POST(req: NextRequest) {
@@ -220,6 +240,6 @@ export async function POST(req: NextRequest) {
     name,
     tail: maskTail(value),
     reloadScheduled: true,
-    reloadEtaSeconds: 5,
+    reloadEtaSeconds: Math.ceil(RELOAD_DEBOUNCE_MS / 1000) + 2,
   });
 }
