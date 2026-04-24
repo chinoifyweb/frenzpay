@@ -85,7 +85,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // ── Protect routes that require authentication ────────────────────────────
+  // ── Admin area uses its own login page ──────────────────────────────────
+  // /admin/* pages are admin-only. Unauthenticated or non-admin users get
+  // sent to /admin-login (not the customer /login) so admins sign in under
+  // a dedicated surface that checks the admin_users table.
+  if (pathname.startsWith('/admin')) {
+    if (!isAuthenticated || session!.role !== 'admin') {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = '/admin-login';
+      if (pathname !== '/admin') loginUrl.searchParams.set('next', pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    // Authenticated admin — fall through to the downstream response below.
+  }
+
+  // ── Protect routes that require authentication (customer side) ────────────
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (isProtected && !isAuthenticated) {
     const loginUrl = request.nextUrl.clone();
@@ -98,11 +112,6 @@ export async function middleware(request: NextRequest) {
 
   // From here: session is guaranteed non-null
   const { role, kycTier, userId } = session!;
-
-  // ── Admin gate ────────────────────────────────────────────────────────────
-  if (pathname.startsWith('/admin') && role !== 'admin') {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
-  }
 
   // ── KYC gates ─────────────────────────────────────────────────────────────
   if (KYC_T1_PREFIXES.some((p) => pathname.startsWith(p)) && kycTier < 1) {
@@ -126,6 +135,8 @@ export const config = {
     '/dashboard/:path*',
     '/author/:path*',
     '/admin/:path*',
+    // /admin-login is intentionally NOT matched — it's the public admin
+    // login page and must stay reachable without a session.
     '/settings/:path*',
     '/login',
     '/signup',

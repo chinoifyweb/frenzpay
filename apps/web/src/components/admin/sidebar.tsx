@@ -117,7 +117,7 @@ function SidebarUserFooter() {
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' })
       if (!res.ok) throw new Error()
-      router.push('/login')
+      router.push('/admin-login')
       router.refresh()
     } catch {
       toast.error('Logout failed. Try again.')

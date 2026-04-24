@@ -51,10 +51,7 @@ export function AdminHeader() {
     try {
       const res = await fetch('/api/auth/logout', { method: 'POST' })
       if (!res.ok) throw new Error()
-      // Force a full refresh so the Next.js Router Cache and all cached
-      // server components drop the stale session entirely.
-      try { await fetch('/api/auth/me', { cache: 'no-store' }) } catch { /* ignore */ }
-      router.push('/login')
+      router.push('/admin-login')
       router.refresh()
     } catch {
       toast.error('Logout failed. Try again.')
