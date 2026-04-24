@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import {
   Wallet, ArrowUpRight, Percent, ShieldCheck, Activity,
   CreditCard, Globe, Zap, Star, MessageCircle, Smartphone,
   Send, RefreshCcw, ArrowRight, BadgeCheck, Lock,
-  Building2, Bitcoin,
+  Building2, Bitcoin, UserPlus, LogIn,
 } from "lucide-react";
 
 const WHATSAPP_LINK = "https://wa.me/12365997663";
@@ -73,10 +74,10 @@ const features = [
 ];
 
 const steps = [
-  { step: "01", title: "Download the App",      description: "Get Frenz Pay from the App Store or Google Play. Sign up in under 2 minutes." },
+  { step: "01", title: "Create your account",   description: "Sign up in under 2 minutes \u2014 email + phone, no app required." },
   { step: "02", title: "Verify Your Identity",  description: "Complete KYC with a valid ID and selfie. Most approvals within 24 hours." },
-  { step: "03", title: "Get Your Accounts",     description: "Receive virtual USD, GBP, and EUR accounts with unique banking details ready to share." },
-  { step: "04", title: "Receive & Withdraw",    description: "Share details with payers, receive money, then withdraw in USDT or Naira — your choice." },
+  { step: "03", title: "Get Your Accounts",     description: "Receive virtual USD and EUR accounts with unique banking details ready to share." },
+  { step: "04", title: "Receive & Withdraw",    description: "Share details with payers, receive money, then withdraw in USDC or Naira \u2014 your choice." },
 ];
 
 const stats = [
@@ -118,22 +119,27 @@ function PhoneMockup({ children }: { children: React.ReactNode }) {
 }
 
 function AppBadges({ size = "md" }: { size?: "md" | "lg" }) {
-  const h = size === "lg" ? "h-13 px-5" : "h-11 px-4";
+  const h = size === "lg" ? "h-13 px-6" : "h-11 px-5";
+  const textSize = size === "lg" ? "text-[15px]" : "text-sm";
   return (
     <div className="flex flex-wrap gap-3">
-      {[
-        { label: "App Store",    sub: "Download on the",  path: "M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" },
-        { label: "Google Play",  sub: "Get it on",        path: "M3.609 1.814L13.792 12 3.61 22.186a.996.996 0 01-.61-.92V2.734a1 1 0 01.609-.92zm10.89 10.893l2.302 2.302-10.937 6.333 8.635-8.635zm3.199-3.199l2.302 2.302a1 1 0 010 1.38l-2.302 2.302L15.395 13l2.303-2.492zM5.864 2.658L16.8 8.99l-2.302 2.302-8.634-8.634z" },
-      ].map(({ label, sub, path }) => (
-        <a key={label} href="#download"
-          className={`inline-flex items-center gap-2.5 rounded-xl bg-gray-900 hover:bg-gray-800 text-white transition-all hover:scale-[1.02] shadow-lg ${h}`}>
-          <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d={path}/></svg>
-          <div>
-            <div className="text-[10px] leading-none text-gray-400">{sub}</div>
-            <div className={`font-semibold leading-tight ${size === "lg" ? "text-[15px]" : "text-sm"}`}>{label}</div>
-          </div>
-        </a>
-      ))}
+      {/* Primary CTA — create account */}
+      <Link
+        href="/signup"
+        className={`inline-flex items-center gap-2 rounded-xl bg-white hover:bg-white/90 text-slate-900 font-semibold transition-all hover:scale-[1.02] shadow-lg ${h} ${textSize}`}
+      >
+        <UserPlus className="w-4 h-4" />
+        Create free account
+        <ArrowRight className="w-4 h-4" />
+      </Link>
+      {/* Secondary — log in */}
+      <Link
+        href="/login"
+        className={`inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold border border-white/20 transition-all hover:scale-[1.02] ${h} ${textSize}`}
+      >
+        <LogIn className="w-4 h-4" />
+        Log in
+      </Link>
     </div>
   );
 }
@@ -746,7 +752,8 @@ export default function HomePage() {
           </div>
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Ready to get paid globally?</h2>
           <p className="mt-4 text-lg text-white/80">
-            Download Frenz Pay and start receiving international payments in minutes. Withdraw in USDT or Naira — available on iOS and Android.
+            Create your Frenz Pay account and start receiving international payments in minutes.
+            Withdraw in USDC or directly to your Naira bank account.
           </p>
           <div className="mt-10 flex justify-center"><AppBadges size="lg" /></div>
           <div className="mt-6">
