@@ -32,6 +32,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 import { logger } from '@frenzpay/logger';
+import { triggerGraphPayoutForWithdrawal } from '@/lib/graph-payout';
 
 const ReviewSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('approve') }),
@@ -206,14 +207,46 @@ export async function PATCH(
     'admin withdrawal review',
   );
 
+  // ── Post-commit: trigger Graph payout on approve ────────────────────────
+  // Fire AFTER the status change commits so the DB is the source of truth for
+  // state. If Graph fails, the withdrawal stays PROCESSING with no externalRef
+  // and the admin retries via mark_settled (manual) or a re-approve endpoint.
+  let payoutResult: Awaited<ReturnType<typeof triggerGraphPayoutForWithdrawal>> | null = null;
+  if (action === 'approve') {
+    try {
+      payoutResult = await triggerGraphPayoutForWithdrawal(id);
+      if (!payoutResult.ok && !payoutResult.skipped) {
+        logger.warn(
+          { withdrawalId: id, error: payoutResult.error },
+          'Graph auto-payout failed after admin approve; will need manual follow-up',
+        );
+      }
+    } catch (err) {
+      logger.error(
+        { withdrawalId: id, err: err instanceof Error ? err.message : String(err) },
+        'Unhandled error dispatching Graph payout post-approve',
+      );
+      payoutResult = { ok: false, error: 'Unexpected error firing Graph payout' };
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     id,
     status: updated.status,
     externalRef: updated.externalRef,
     failureReason: updated.failureReason,
-    // Rejection doesn't auto-refund the user's balance yet. Flag this so the
-    // UI can show a clear warning and the admin manually processes a refund.
     refundRequired: action === 'reject',
+    ...(payoutResult
+      ? {
+          graphPayout: {
+            ok: payoutResult.ok,
+            payoutId: payoutResult.payoutId ?? null,
+            destinationId: payoutResult.destinationId ?? null,
+            skipped: payoutResult.skipped ?? false,
+            error: payoutResult.error ?? null,
+          },
+        }
+      : {}),
   });
 }

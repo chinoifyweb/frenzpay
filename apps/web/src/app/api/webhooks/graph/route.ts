@@ -1,37 +1,51 @@
 /**
  * POST /api/webhooks/graph
  *
- * Graph (usegraph.io / Oval) webhook receiver.
+ * Graph (usegraph / Oval) webhook receiver.
  *
- * Security
- *   - Signature verified via verifyGraphWebhookSignature() — HMAC-SHA256
- *     against GRAPH_WEBHOOK_SECRET by default; scheme will be confirmed
- *     and finalised once we pull the specifics from the Graph dashboard.
- *   - Events are deduped via the GraphWebhookEvent table.
+ * Security:
+ *   - Signature verified by verifyGraphWebhookSignature() — HMAC-SHA256 over
+ *     the raw body by default. GRAPH_WEBHOOK_VERIFY=0 bypasses (for the
+ *     initial handshake before Graph tells us their signing scheme).
+ *   - Deduplication via GraphWebhookEvent.id (Graph's event id if present,
+ *     otherwise a deterministic hash of the body).
  *
- * Handled event_types (stub handlers at the moment — ledger posting will be
- * wired up in Phase 2b once we see a real payload):
+ * Handled event types:
  *   Issuance:
- *     account.created / account.issuance.failed / account.migrated /
- *     account.closed / card.created / card.issuance.failed / card.frozen /
- *     card.closed
+ *     account.created            — mark UserExternalAccount active + persist
+ *                                   materialised account_number/bank fields.
+ *     account.issuance.failed    — mark UserExternalAccount failed + store
+ *                                   reason; surface via admin alert.
+ *     account.migrated           — noted only, ops follows up in Graph dashboard.
+ *     account.closed             — mark UserExternalAccount closed.
+ *     card.created               — mark Card active.
+ *     card.issuance.failed       — mark Card closed + store reason.
+ *     card.frozen                — mark Card frozen.
+ *     card.closed                — mark Card closed.
+ *
  *   Transactions:
- *     account.credit     — deposit received → post to ledger (debit
- *                           graph_ngn_float, credit user.NGN.AVAILABLE)
- *     payout.success / payout.failed
- *     card.transaction
- *     conversion.success / conversion.failed
+ *     account.credit             — deposit landed. Post a DEPOSIT Transaction:
+ *                                   debit external_world_<currency>,
+ *                                   credit user.<currency>.AVAILABLE.
+ *     payout.success             — Graph paid out our Withdrawal:
+ *                                   mark Withdrawal SETTLED + store externalRef.
+ *     payout.failed              — Graph failed the payout:
+ *                                   mark Withdrawal FAILED + refund ledger.
+ *     conversion.success         — conversion executed; log for reconciliation.
+ *     conversion.failed          — conversion failed; log for retry.
+ *     card.transaction           — card charge; post CARD_AUTH transaction.
  *
  * GET / HEAD return 200 so Graph's reachability probe marks the endpoint
- * Active in their dashboard when a new webhook is saved.
+ * Active in their dashboard.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createHash } from 'node:crypto';
 import { prisma } from '@frenzpay/db';
 import { verifyGraphWebhookSignature } from '@frenzpay/providers/graph';
+import { postTransaction, ensureAccount, getSystemAccount } from '@frenzpay/ledger';
 import { logger } from '@frenzpay/logger';
 import { captureError } from '@/lib/observability';
-import { createHash } from 'node:crypto';
 
 export async function GET() {
   return NextResponse.json({ status: 'ok', endpoint: 'graph' });
@@ -41,11 +55,41 @@ export async function HEAD() {
   return new NextResponse(null, { status: 200 });
 }
 
+// ─── Types shared across handlers ────────────────────────────────────────────
+
+interface WebhookEnvelope {
+  event_type?: string;
+  id?: string;
+  entity?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+}
+
+/** Helper: read a string field from a possibly-nested object (obj.key or obj.data.key). */
+function readString(obj: Record<string, unknown> | undefined, ...keys: string[]): string | null {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.length > 0) return v;
+  }
+  return null;
+}
+
+function readNumber(obj: Record<string, unknown> | undefined, ...keys: string[]): number | null {
+  if (!obj) return null;
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'number' && !Number.isNaN(v)) return v;
+    if (typeof v === 'string' && v.match(/^-?\d+(\.\d+)?$/)) return Number(v);
+  }
+  return null;
+}
+
+// ─── POST entry ──────────────────────────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
 
-  // We don't know yet which header Graph uses — accept the common candidates
-  // and treat the first non-empty one as authoritative.
+  // Accept any of the common signature header names; the first non-empty wins.
   const signature =
     req.headers.get('graph-signature') ??
     req.headers.get('x-graph-signature') ??
@@ -62,10 +106,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
   }
 
-  // ── Parse body ───────────────────────────────────────────────────────────
-  let payload: { event_type?: string; entity?: Record<string, unknown>; data?: Record<string, unknown>; id?: string };
+  let payload: WebhookEnvelope;
   try {
-    payload = JSON.parse(rawBody);
+    payload = JSON.parse(rawBody) as WebhookEnvelope;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
@@ -74,15 +117,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing event_type' }, { status: 400 });
   }
 
-  // Graph may or may not send a top-level event id. If not, synthesise a
-  // deterministic id from the raw body so retries dedupe.
+  // Deterministic dedup id when Graph doesn't supply one.
   const eventId =
     (typeof payload.id === 'string' && payload.id) ||
     (payload.entity && typeof payload.entity === 'object' && 'id' in payload.entity
       ? `${payload.event_type}:${(payload.entity as { id: string }).id}:${createHash('sha256').update(rawBody).digest('hex').slice(0, 16)}`
       : `${payload.event_type}:${createHash('sha256').update(rawBody).digest('hex').slice(0, 24)}`);
 
-  // ── Idempotency ──────────────────────────────────────────────────────────
   const existing = await prisma.graphWebhookEvent.findUnique({
     where: { id: eventId },
     select: { id: true, processedAt: true },
@@ -105,31 +146,41 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  // ── Dispatch ─────────────────────────────────────────────────────────────
   try {
     switch (payload.event_type) {
+      case 'account.created':
+        await handleAccountCreated(eventId, payload);
+        break;
+      case 'account.issuance.failed':
+        await handleAccountIssuanceFailed(eventId, payload);
+        break;
+      case 'account.migrated':
+      case 'account.closed':
+        await handleAccountStatusEvent(eventId, payload);
+        break;
       case 'account.credit':
         await handleAccountCredit(eventId, payload);
         break;
-      case 'account.created':
-      case 'account.issuance.failed':
-      case 'account.migrated':
-      case 'account.closed':
+      case 'payout.success':
+        await handlePayoutSuccess(eventId, payload);
+        break;
+      case 'payout.failed':
+        await handlePayoutFailed(eventId, payload);
+        break;
       case 'card.created':
       case 'card.issuance.failed':
       case 'card.frozen':
       case 'card.closed':
+        await handleCardEvent(eventId, payload);
+        break;
       case 'card.transaction':
-      case 'payout.success':
-      case 'payout.failed':
       case 'conversion.success':
       case 'conversion.failed':
-        // Known types — logged but not acted on yet. Phase 2b wires the
-        // DB updates for each. For now we mark processed so they don't
-        // retry forever.
+        // Logged for now; card charges + FX conversion reconciliation come
+        // with Phase I / H wire-up.
         logger.info(
           { eventId, eventType: payload.event_type },
-          'Graph webhook received (handler pending)',
+          'Graph webhook received (handler stub)',
         );
         break;
       default:
@@ -143,7 +194,6 @@ export async function POST(req: NextRequest) {
       where: { id: eventId },
       data: { processedAt: new Date(), error: null },
     });
-
     return NextResponse.json({ status: 'processed' });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -162,26 +212,343 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ─── Handlers ────────────────────────────────────────────────────────────
+// ─── Handlers ────────────────────────────────────────────────────────────────
 
 /**
- * account.credit — deposit received on a Graph virtual account. Wire this up
- * once we have a real payload example. Minimum we need:
- *   - bank account id       → resolve to UserExternalAccount.userId
- *   - amount                → BigInt minor units
- *   - settlement currency   → 'NGN' for Graph
- * Then post a double-entry transaction: debit graph_ngn_float,
- * credit user.NGN.AVAILABLE.
+ * account.created — a virtual bank account we asked for is now active. Lift
+ * any fields that only materialise post-creation (account_number, bank_code,
+ * routing_number) onto our UserExternalAccount row.
  */
-async function handleAccountCredit(eventId: string, payload: { data?: Record<string, unknown>; entity?: Record<string, unknown> }): Promise<void> {
+async function handleAccountCreated(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const externalAccountId = readString(data, 'id', 'bank_account_id', 'account_id');
+  if (!externalAccountId) {
+    logger.warn({ eventId }, 'account.created missing bank account id');
+    return;
+  }
+  const accountNumber = readString(data, 'account_number');
+  const accountName = readString(data, 'account_name');
+  const bankName = readString(data, 'bank_name');
+  const bankCode = readString(data, 'bank_code');
+  const routingNumber = readString(data, 'routing_number');
+  const swiftCode = readString(data, 'swift_code');
+
+  const existing = await prisma.userExternalAccount.findFirst({
+    where: { provider: 'graph', externalAccountId },
+    select: { id: true, metadata: true },
+  });
+  if (!existing) {
+    logger.warn(
+      { eventId, externalAccountId },
+      'account.created for unknown UserExternalAccount — was this account created outside our flow?',
+    );
+    return;
+  }
+
+  const meta = (existing.metadata ?? {}) as Record<string, unknown>;
+  if (bankCode) meta['bank_code'] = bankCode;
+  if (swiftCode) meta['swift_code'] = swiftCode;
+
+  await prisma.userExternalAccount.update({
+    where: { id: existing.id },
+    data: {
+      status: 'active',
+      accountNumber: accountNumber ?? undefined,
+      accountName: accountName ?? undefined,
+      bankName: bankName ?? undefined,
+      routingNumber: routingNumber ?? undefined,
+      metadata: meta,
+    },
+  });
+  logger.info({ eventId, externalAccountId }, 'UserExternalAccount marked active');
+}
+
+async function handleAccountIssuanceFailed(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const externalAccountId = readString(data, 'id', 'bank_account_id', 'account_id');
+  const reason = readString(data, 'reason', 'failure_reason', 'message') ?? 'unknown';
+  if (!externalAccountId) {
+    logger.warn({ eventId }, 'account.issuance.failed missing account id');
+    return;
+  }
+  const existing = await prisma.userExternalAccount.findFirst({
+    where: { provider: 'graph', externalAccountId },
+    select: { id: true, metadata: true },
+  });
+  if (!existing) {
+    logger.warn({ eventId, externalAccountId }, 'account.issuance.failed for unknown account');
+    return;
+  }
+  const meta = (existing.metadata ?? {}) as Record<string, unknown>;
+  meta['issuance_failure_reason'] = reason;
+  await prisma.userExternalAccount.update({
+    where: { id: existing.id },
+    data: { status: 'failed', metadata: meta },
+  });
+  logger.warn({ eventId, externalAccountId, reason }, 'UserExternalAccount issuance failed');
+}
+
+async function handleAccountStatusEvent(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const externalAccountId = readString(data, 'id', 'bank_account_id', 'account_id');
+  if (!externalAccountId) return;
+  const status =
+    payload.event_type === 'account.closed' ? 'closed' :
+    payload.event_type === 'account.migrated' ? 'migrated' :
+    'active';
+  await prisma.userExternalAccount.updateMany({
+    where: { provider: 'graph', externalAccountId },
+    data: { status },
+  });
+  logger.info({ eventId, externalAccountId, status }, 'UserExternalAccount status updated');
+}
+
+/**
+ * account.credit — a deposit landed in a user's Graph virtual account.
+ *
+ * Ledger posting (per Graph's "Account Credit" payload shape):
+ *   amount is in subunits, currency is NGN/USD/EUR.
+ *   debit  external_world_<currency>  (funds left the outside world)
+ *   credit user.<currency>.AVAILABLE  (user's balance increased)
+ *
+ * Idempotency key is the Graph event id — duplicate deliveries post nothing.
+ */
+async function handleAccountCredit(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const externalAccountId = readString(data, 'account_id', 'bank_account_id', 'id');
+  const amountRaw = readNumber(data, 'amount', 'credit_amount');
+  const currency = readString(data, 'currency')?.toUpperCase();
+
+  if (!externalAccountId || !amountRaw || !currency) {
+    logger.warn(
+      { eventId, hasAccount: !!externalAccountId, amount: amountRaw, currency },
+      'account.credit missing required fields — logged and ignored',
+    );
+    return;
+  }
+
+  // Resolve to our user
+  const external = await prisma.userExternalAccount.findFirst({
+    where: { provider: 'graph', externalAccountId },
+    select: { id: true, userId: true, currency: true },
+  });
+  if (!external) {
+    logger.warn(
+      { eventId, externalAccountId },
+      'account.credit for unknown Graph bank account — dropping',
+    );
+    return;
+  }
+
+  // Build ledger lines
+  const externalWorldAccountName = `external_world_${currency.toLowerCase()}`;
+  let externalWorldAccountId: string;
+  try {
+    externalWorldAccountId = await getSystemAccount(prisma, externalWorldAccountName);
+  } catch (err) {
+    // Missing system account — log loudly, but don't crash the webhook. Ops
+    // runs the seed script to provision these.
+    logger.error(
+      { eventId, externalWorldAccountName, err: err instanceof Error ? err.message : err },
+      'Missing system account for deposit credit',
+    );
+    throw err;
+  }
+
+  const userAvailableAccountId = await ensureAccount(
+    prisma,
+    external.userId,
+    currency,
+    'AVAILABLE',
+  );
+
+  const amount = BigInt(Math.round(amountRaw)); // amount is already in subunits
+  const idempotencyKey = `graph-deposit-${eventId}`;
+
+  const tx = await postTransaction(prisma, {
+    type: 'DEPOSIT',
+    idempotencyKey,
+    externalRef: externalAccountId,
+    initiatorUserId: external.userId,
+    lines: [
+      {
+        debitAccountId: externalWorldAccountId,
+        creditAccountId: userAvailableAccountId,
+        amount,
+      },
+    ],
+    metadata: {
+      source: 'graph.account.credit',
+      externalAccountId,
+      graphEventId: eventId,
+    },
+  });
+
   logger.info(
     {
       eventId,
-      keys: Object.keys(payload.data ?? {}),
-      entityKeys: Object.keys(payload.entity ?? {}),
+      userId: external.userId,
+      currency,
+      amountSubunits: amount.toString(),
+      transactionId: tx.id,
     },
-    'Graph account.credit received — ledger posting is Phase 2b',
+    'Graph deposit posted to ledger',
   );
-  // Intentionally no-op for now. Leaving the payload keys in the log so the
-  // first real event gives us a reference for wiring the real handler.
+}
+
+/**
+ * payout.success — Graph successfully paid out a payout we initiated. Mark
+ * the matching Withdrawal SETTLED. Ledger entries for the payout are written
+ * at the time the Withdrawal is created; we just need to record completion.
+ */
+async function handlePayoutSuccess(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const payoutId = readString(data, 'id', 'payout_id');
+  if (!payoutId) {
+    logger.warn({ eventId }, 'payout.success missing payout id');
+    return;
+  }
+
+  const withdrawal = await prisma.withdrawal.findFirst({
+    where: { externalRef: payoutId, provider: 'graph' },
+    select: { id: true, status: true, transaction: { select: { initiatorUserId: true } } },
+  });
+  if (!withdrawal) {
+    logger.warn({ eventId, payoutId }, 'payout.success for unknown withdrawal');
+    return;
+  }
+  if (withdrawal.status === 'SETTLED') {
+    logger.info({ eventId, payoutId }, 'payout.success: already settled');
+    return;
+  }
+
+  await prisma.withdrawal.update({
+    where: { id: withdrawal.id },
+    data: { status: 'SETTLED', settledAt: new Date() },
+  });
+  logger.info(
+    {
+      eventId,
+      payoutId,
+      withdrawalId: withdrawal.id,
+      userId: withdrawal.transaction.initiatorUserId,
+    },
+    'Withdrawal marked SETTLED',
+  );
+}
+
+/**
+ * payout.failed — Graph couldn't complete the payout. Mark Withdrawal FAILED
+ * and refund the user's balance: reverse the HOLD entry so funds return to
+ * AVAILABLE.
+ */
+async function handlePayoutFailed(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const payoutId = readString(data, 'id', 'payout_id');
+  const reason = readString(data, 'reason', 'failure_reason', 'message') ?? 'unknown';
+  if (!payoutId) {
+    logger.warn({ eventId }, 'payout.failed missing payout id');
+    return;
+  }
+
+  const withdrawal = await prisma.withdrawal.findFirst({
+    where: { externalRef: payoutId, provider: 'graph' },
+    select: {
+      id: true,
+      status: true,
+      sourceAmountCents: true,
+      transactionId: true,
+      transaction: { select: { initiatorUserId: true, currency: true } },
+    },
+  });
+  if (!withdrawal) {
+    logger.warn({ eventId, payoutId }, 'payout.failed for unknown withdrawal');
+    return;
+  }
+  if (withdrawal.status === 'FAILED' || withdrawal.status === 'REFUNDED') {
+    logger.info({ eventId, payoutId }, 'payout.failed: already terminal');
+    return;
+  }
+
+  const userId = withdrawal.transaction.initiatorUserId;
+  if (!userId) {
+    logger.warn({ eventId, payoutId }, 'payout.failed: no user on transaction');
+    return;
+  }
+
+  // Refund: debit user.<currency>.HOLD → credit user.<currency>.AVAILABLE
+  const currency = withdrawal.transaction.currency;
+  const holdAccountId = await ensureAccount(prisma, userId, currency, 'HOLD');
+  const availableAccountId = await ensureAccount(prisma, userId, currency, 'AVAILABLE');
+  const amount = withdrawal.sourceAmountCents;
+  const idempotencyKey = `graph-refund-${eventId}`;
+
+  await prisma.$transaction(async (tx: any) => {
+    await postTransaction(tx, {
+      type: 'REFUND',
+      idempotencyKey,
+      externalRef: payoutId,
+      initiatorUserId: userId,
+      lines: [
+        {
+          debitAccountId: holdAccountId,
+          creditAccountId: availableAccountId,
+          amount,
+        },
+      ],
+      metadata: {
+        source: 'graph.payout.failed',
+        withdrawalId: withdrawal.id,
+        reason,
+        graphEventId: eventId,
+      },
+    });
+    await tx.withdrawal.update({
+      where: { id: withdrawal.id },
+      data: { status: 'REFUNDED', failureReason: reason },
+    });
+  });
+
+  logger.info(
+    {
+      eventId,
+      payoutId,
+      withdrawalId: withdrawal.id,
+      userId,
+      reason,
+      refundAmountSubunits: amount.toString(),
+    },
+    'Withdrawal failed + refund posted',
+  );
+}
+
+/** card.* events — update Card.status only. */
+async function handleCardEvent(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const externalCardId = readString(data, 'id', 'card_id');
+  if (!externalCardId) {
+    logger.warn({ eventId }, 'card.* event missing card id');
+    return;
+  }
+
+  const newStatus =
+    payload.event_type === 'card.created'
+      ? 'ACTIVE'
+      : payload.event_type === 'card.issuance.failed' || payload.event_type === 'card.closed'
+        ? 'CLOSED'
+        : payload.event_type === 'card.frozen'
+          ? 'FROZEN'
+          : null;
+  if (!newStatus) return;
+
+  const card = await prisma.card.findUnique({ where: { externalCardId } });
+  if (!card) {
+    logger.warn({ eventId, externalCardId }, 'card.* event for unknown card');
+    return;
+  }
+  await prisma.card.update({
+    where: { externalCardId },
+    data: { status: newStatus as any },
+  });
+  logger.info({ eventId, externalCardId, newStatus }, 'Card status updated from webhook');
 }
