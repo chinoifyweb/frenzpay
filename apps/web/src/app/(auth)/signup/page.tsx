@@ -24,6 +24,10 @@ type Step = 'form' | 'verify_email'
 const signupSchema = z
   .object({
     firstName: z.string().min(2, 'First name must be at least 2 characters'),
+    middleName: z
+      .string()
+      .min(2, 'Middle name must be at least 2 characters as on your ID')
+      .max(60, 'Middle name is too long'),
     lastName: z.string().min(2, 'Last name must be at least 2 characters'),
     email: z.string().email('Please enter a valid email address'),
     phone: z
@@ -119,6 +123,7 @@ export default function SignupPage() {
           phone,
           password: data.password,
           firstName: data.firstName,
+          middleName: data.middleName,
           lastName: data.lastName,
           agreedToTerms: data.agreeTerms,
         }),
@@ -267,8 +272,11 @@ export default function SignupPage() {
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        {/* Name row */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Name row — first / middle / last. All three are required because
+            our virtual account issuer (Graph) will not onboard a customer
+            without a middle name on file. Use the name as it appears on the
+            government-issued ID you'll upload during KYC. */}
+        <div className="grid grid-cols-3 gap-3">
           <div className="space-y-2">
             <Label htmlFor="firstName">First Name</Label>
             <Input
@@ -281,6 +289,20 @@ export default function SignupPage() {
             />
             {errors.firstName && (
               <p className="text-xs text-destructive">{errors.firstName.message}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="middleName">Middle Name</Label>
+            <Input
+              id="middleName"
+              type="text"
+              placeholder="Samuel"
+              autoComplete="additional-name"
+              aria-invalid={!!errors.middleName}
+              {...register('middleName')}
+            />
+            {errors.middleName && (
+              <p className="text-xs text-destructive">{errors.middleName.message}</p>
             )}
           </div>
           <div className="space-y-2">
@@ -298,6 +320,9 @@ export default function SignupPage() {
             )}
           </div>
         </div>
+        <p className="text-xs text-muted-foreground -mt-2">
+          Use your exact legal names as they appear on your government-issued ID.
+        </p>
 
         {/* Email */}
         <div className="space-y-2">

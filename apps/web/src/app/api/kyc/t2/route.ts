@@ -35,10 +35,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
-import { encryptField } from '@frenzpay/crypto';
+import { encryptField, blindIndex } from '@frenzpay/crypto';
 import { logger } from '@frenzpay/logger';
 import { storeKycFile } from '@/lib/kyc-storage';
 import { sendKYCSubmittedEmail, sendAdminNewKYCNotification } from '@/lib/email';
+
+// Nigerian state 2-letter codes (must match the picker in the KYC form)
+const VALID_NG_STATES = new Set([
+  'AB','AD','AK','AN','BA','BY','BE','BO','CR','DE','EB','ED','EK','EN','FC',
+  'GO','IM','JI','KD','KN','KT','KE','KO','KW','LA','NA','NI','OG','ON','OS',
+  'OY','PL','RI','SO','TA','YO','ZA',
+]);
+const VALID_EMPLOYMENT = new Set([
+  'employed', 'self_employed', 'unemployed', 'student', 'retired', 'other',
+]);
 
 // ── Validation constants ───────────────────────────────────────────────────
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
@@ -98,10 +108,25 @@ export async function POST(req: NextRequest) {
   const fullLegalName = (formData.get('fullLegalName')?.toString() ?? '').trim();
   const purposeOfAccount = (formData.get('purposeOfAccount')?.toString() ?? '').trim().toLowerCase();
   const sourceOfFunds = (formData.get('sourceOfFunds')?.toString() ?? '').trim().toLowerCase();
+  const bvn = (formData.get('bvn')?.toString() ?? '').trim();
+
+  // Address
+  const addressLine1 = (formData.get('addressLine1')?.toString() ?? '').trim();
+  const addressLine2 = (formData.get('addressLine2')?.toString() ?? '').trim();
+  const city = (formData.get('city')?.toString() ?? '').trim();
+  const addressState = (formData.get('addressState')?.toString() ?? '').trim().toUpperCase();
+  const postalCode = (formData.get('postalCode')?.toString() ?? '').trim();
+
+  // background_information
+  const employmentStatus = (formData.get('employmentStatus')?.toString() ?? '').trim().toLowerCase();
+  const occupation = (formData.get('occupation')?.toString() ?? '').trim();
+  const expectedMonthlyInflowCentsStr = (formData.get('expectedMonthlyInflowCents')?.toString() ?? '').trim();
+
   const idFront = formData.get('idFront') as File | null;
   const idBack = formData.get('idBack') as File | null;
   const selfie = formData.get('selfie') as File | null;
   const liveness = formData.get('liveness') as File | null;
+  const proofOfAddress = formData.get('proofOfAddress') as File | null;
 
   // ── Validate ─────────────────────────────────────────────────────────────
   if (!VALID_DOC_TYPES.has(docType)) {
@@ -126,6 +151,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Select your main source of funds.' }, { status: 422 });
   }
 
+  // Address validation
+  if (addressLine1.length < 4) {
+    return NextResponse.json({ error: 'Enter your street address (line 1).' }, { status: 422 });
+  }
+  if (city.length < 2) {
+    return NextResponse.json({ error: 'Enter your city.' }, { status: 422 });
+  }
+  if (!VALID_NG_STATES.has(addressState)) {
+    return NextResponse.json({ error: 'Pick your Nigerian state.' }, { status: 422 });
+  }
+  if (!/^\d{6}$/.test(postalCode)) {
+    return NextResponse.json({ error: 'Postal code must be 6 digits.' }, { status: 422 });
+  }
+
+  // BVN validation (optional on submission but strongly recommended)
+  if (bvn && !/^\d{11}$/.test(bvn)) {
+    return NextResponse.json({ error: 'BVN must be exactly 11 digits.' }, { status: 422 });
+  }
+
+  // Background info validation
+  if (!VALID_EMPLOYMENT.has(employmentStatus)) {
+    return NextResponse.json({ error: 'Choose your employment status.' }, { status: 422 });
+  }
+  if (occupation.length < 2) {
+    return NextResponse.json({ error: 'Enter your occupation.' }, { status: 422 });
+  }
+  const expectedMonthlyInflowCents = Number(expectedMonthlyInflowCentsStr);
+  if (!Number.isFinite(expectedMonthlyInflowCents) || expectedMonthlyInflowCents < 0) {
+    return NextResponse.json({ error: 'Expected monthly inflow is invalid.' }, { status: 422 });
+  }
+
   const idFrontErr = validateFile('idFront', idFront, 'image');
   if (idFrontErr) return NextResponse.json({ error: idFrontErr }, { status: 422 });
 
@@ -134,6 +190,9 @@ export async function POST(req: NextRequest) {
 
   const livenessErr = validateFile('liveness', liveness, 'video-or-image');
   if (livenessErr) return NextResponse.json({ error: livenessErr }, { status: 422 });
+
+  const poaErr = validateFile('proofOfAddress', proofOfAddress, 'image');
+  if (poaErr) return NextResponse.json({ error: poaErr }, { status: 422 });
 
   if (REQUIRES_ID_BACK.has(docType)) {
     const idBackErr = validateFile('idBack', idBack, 'image');
@@ -179,12 +238,13 @@ export async function POST(req: NextRequest) {
 
   // ── Upload files (envelope-encrypted to disk / S3) ───────────────────────
   const submissionPrefix = `${session.userId}-${Date.now()}`;
-  let idFrontUpload, selfieUpload, livenessUpload, idBackUpload;
+  let idFrontUpload, selfieUpload, livenessUpload, idBackUpload, proofOfAddressUpload;
   try {
-    [idFrontUpload, selfieUpload, livenessUpload, idBackUpload] = await Promise.all([
+    [idFrontUpload, selfieUpload, livenessUpload, proofOfAddressUpload, idBackUpload] = await Promise.all([
       storeKycFile(idFront!, session.userId, submissionPrefix, 'id_front'),
       storeKycFile(selfie!, session.userId, submissionPrefix, 'selfie'),
       storeKycFile(liveness!, session.userId, submissionPrefix, 'liveness'),
+      storeKycFile(proofOfAddress!, session.userId, submissionPrefix, 'proof_of_address'),
       idBack ? storeKycFile(idBack, session.userId, submissionPrefix, 'id_back') : Promise.resolve(null),
     ]);
   } catch (err) {
@@ -201,6 +261,12 @@ export async function POST(req: NextRequest) {
   // ── Encrypt PII ──────────────────────────────────────────────────────────
   const encryptedDocNumber = encryptField(docNumber, session.userId);
   const encryptedName = encryptField(fullLegalName, session.userId);
+  const encryptedBvn = bvn ? encryptField(bvn, session.userId) : null;
+  const bvnBlindIdx = bvn ? blindIndex(bvn) : null;
+  const encryptedLine1 = encryptField(addressLine1, session.userId);
+  const encryptedLine2 = addressLine2 ? encryptField(addressLine2, session.userId) : null;
+  const encryptedCity = encryptField(city, session.userId);
+  const encryptedPostal = encryptField(postalCode, session.userId);
 
   // Map doc type to the specific encrypted column in KycSubmission
   const docFieldMap: Record<string, 'nin' | 'passportNumber' | 'driverLicenseNumber'> = {
@@ -243,6 +309,13 @@ export async function POST(req: NextRequest) {
       fileSizeBytes: BigInt(idBack.size),
     });
   }
+  docCreateList.push({
+    docType: 'proof_of_address',
+    storageKey: proofOfAddressUpload!.storageKey,
+    encryptedDek: proofOfAddressUpload!.encryptedDek,
+    mimeType: proofOfAddress!.type,
+    fileSizeBytes: BigInt(proofOfAddress!.size),
+  });
 
   // ── Persist ──────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -255,15 +328,29 @@ export async function POST(req: NextRequest) {
         provider: 'manual',
         fullLegalName: encryptedName,
         [docFieldMap[docType]]: encryptedDocNumber,
+        ...(encryptedBvn ? { bvn: encryptedBvn, bvnBlindIndex: bvnBlindIdx } : {}),
         sourceOfFunds,
         purposeOfAccount,
+        employmentStatus,
+        occupation,
+        expectedMonthlyInflowCents: BigInt(Math.round(expectedMonthlyInflowCents)),
         documents: { create: docCreateList },
       },
     });
 
+    // Persist address + structured fields on the user so Graph sync has them.
     await tx.user.update({
       where: { id: session.userId },
-      data: { kycStatus: 'PENDING_REVIEW' },
+      data: {
+        kycStatus: 'PENDING_REVIEW',
+        addressLine1: encryptedLine1 as any,
+        addressLine2: (encryptedLine2 as any) ?? undefined,
+        city: encryptedCity as any,
+        addressState,
+        postalCode: encryptedPostal as any,
+        // Ensure a country is set for Graph — default NG if not already set.
+        country: 'NG',
+      },
     });
 
     await tx.auditLog.create({

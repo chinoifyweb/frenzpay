@@ -82,6 +82,38 @@ const VIDEO_OR_IMAGE_TYPES = [...IMAGE_TYPES, 'video/mp4', 'video/webm', 'video/
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_LIVENESS_BYTES = 25 * 1024 * 1024
 
+// Nigerian state 2-letter codes as expected by Graph's address object.
+const NG_STATES = [
+  { code: 'AB', name: 'Abia' }, { code: 'AD', name: 'Adamawa' },
+  { code: 'AK', name: 'Akwa Ibom' }, { code: 'AN', name: 'Anambra' },
+  { code: 'BA', name: 'Bauchi' }, { code: 'BY', name: 'Bayelsa' },
+  { code: 'BE', name: 'Benue' }, { code: 'BO', name: 'Borno' },
+  { code: 'CR', name: 'Cross River' }, { code: 'DE', name: 'Delta' },
+  { code: 'EB', name: 'Ebonyi' }, { code: 'ED', name: 'Edo' },
+  { code: 'EK', name: 'Ekiti' }, { code: 'EN', name: 'Enugu' },
+  { code: 'FC', name: 'Federal Capital Territory (Abuja)' },
+  { code: 'GO', name: 'Gombe' }, { code: 'IM', name: 'Imo' },
+  { code: 'JI', name: 'Jigawa' }, { code: 'KD', name: 'Kaduna' },
+  { code: 'KN', name: 'Kano' }, { code: 'KT', name: 'Katsina' },
+  { code: 'KE', name: 'Kebbi' }, { code: 'KO', name: 'Kogi' },
+  { code: 'KW', name: 'Kwara' }, { code: 'LA', name: 'Lagos' },
+  { code: 'NA', name: 'Nasarawa' }, { code: 'NI', name: 'Niger' },
+  { code: 'OG', name: 'Ogun' }, { code: 'ON', name: 'Ondo' },
+  { code: 'OS', name: 'Osun' }, { code: 'OY', name: 'Oyo' },
+  { code: 'PL', name: 'Plateau' }, { code: 'RI', name: 'Rivers' },
+  { code: 'SO', name: 'Sokoto' }, { code: 'TA', name: 'Taraba' },
+  { code: 'YO', name: 'Yobe' }, { code: 'ZA', name: 'Zamfara' },
+] as const
+
+const EMPLOYMENT_STATUSES = [
+  { value: 'employed', label: 'Employed (salaried)' },
+  { value: 'self_employed', label: 'Self-employed / business owner' },
+  { value: 'unemployed', label: 'Unemployed' },
+  { value: 'student', label: 'Student' },
+  { value: 'retired', label: 'Retired' },
+  { value: 'other', label: 'Other' },
+] as const
+
 function fmtBytes(b: number): string {
   if (b < 1024) return `${b} B`
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
@@ -231,13 +263,29 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
   const [docType, setDocType] = useState<IdType>('nin')
   const [docNumber, setDocNumber] = useState('')
   const [fullLegalName, setFullLegalName] = useState('')
+  const [bvn, setBvn] = useState('')
   const [purposeOfAccount, setPurposeOfAccount] = useState('')
   const [sourceOfFunds, setSourceOfFunds] = useState('')
+
+  // Address — required by Graph for both NGN + USD virtual accounts.
+  const [addressLine1, setAddressLine1] = useState('')
+  const [addressLine2, setAddressLine2] = useState('')
+  const [city, setCity] = useState('')
+  const [addressState, setAddressState] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+
+  // background_information — Graph requires it for USD accounts. We collect
+  // it for every submission so the USD rail is unlocked automatically after
+  // approval.
+  const [employmentStatus, setEmploymentStatus] = useState('')
+  const [occupation, setOccupation] = useState('')
+  const [expectedMonthlyInflowUsd, setExpectedMonthlyInflowUsd] = useState('')
 
   const [idFront, setIdFront] = useState<File | null>(null)
   const [idBack, setIdBack] = useState<File | null>(null)
   const [selfie, setSelfie] = useState<File | null>(null)
   const [liveness, setLiveness] = useState<File | null>(null)
+  const [proofOfAddress, setProofOfAddress] = useState<File | null>(null)
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -249,9 +297,17 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
     fullLegalName.trim().length >= 4 &&
     !!purposeOfAccount &&
     !!sourceOfFunds &&
+    addressLine1.trim().length >= 4 &&
+    city.trim().length >= 2 &&
+    !!addressState &&
+    postalCode.trim().length >= 4 &&
+    !!employmentStatus &&
+    occupation.trim().length >= 2 &&
+    expectedMonthlyInflowUsd.trim().length > 0 &&
     idFront !== null &&
     selfie !== null &&
     liveness !== null &&
+    proofOfAddress !== null &&
     (!requiresBack || idBack !== null)
 
   async function submit() {
@@ -266,12 +322,29 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
       fd.append('docType', docType)
       fd.append('docNumber', docNumber.trim())
       fd.append('fullLegalName', fullLegalName.trim())
+      if (bvn.trim()) fd.append('bvn', bvn.trim())
       fd.append('purposeOfAccount', purposeOfAccount)
       fd.append('sourceOfFunds', sourceOfFunds)
+
+      // Address fields
+      fd.append('addressLine1', addressLine1.trim())
+      if (addressLine2.trim()) fd.append('addressLine2', addressLine2.trim())
+      fd.append('city', city.trim())
+      fd.append('addressState', addressState)
+      fd.append('postalCode', postalCode.trim())
+
+      // background_information
+      fd.append('employmentStatus', employmentStatus)
+      fd.append('occupation', occupation.trim())
+      // Express inflow in USD cents — server stores as BigInt cents.
+      const inflowCents = Math.round(parseFloat(expectedMonthlyInflowUsd) * 100)
+      fd.append('expectedMonthlyInflowCents', String(inflowCents))
+
       fd.append('idFront', idFront!)
       if (idBack) fd.append('idBack', idBack)
       fd.append('selfie', selfie!)
       fd.append('liveness', liveness!)
+      fd.append('proofOfAddress', proofOfAddress!)
 
       const res = await fetch('/api/kyc/t2', { method: 'POST', body: fd })
       const json = await res.json()
@@ -341,6 +414,21 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
           </div>
         </div>
 
+        <div className="space-y-1.5">
+          <Label htmlFor="bvn">BVN (Bank Verification Number)</Label>
+          <Input
+            id="bvn"
+            value={bvn}
+            onChange={(e) => setBvn(e.target.value.replace(/\D/g, '').slice(0, 11))}
+            placeholder="11 digits"
+            className="font-mono"
+            autoComplete="off"
+          />
+          <p className="text-xs text-muted-foreground">
+            Required for NGN payouts. Dial *565*0# from a phone registered to your bank to retrieve.
+          </p>
+        </div>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>What will you use this account for?</Label>
@@ -367,6 +455,126 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+        </div>
+
+        {/* ── Residential address ─────────────────────────────────────── */}
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+          <div>
+            <p className="font-medium text-sm">Residential Address</p>
+            <p className="text-xs text-muted-foreground">
+              As it appears on your proof-of-address document (utility bill / bank statement / tenancy agreement).
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="addressLine1">Street address</Label>
+            <Input
+              id="addressLine1"
+              value={addressLine1}
+              onChange={(e) => setAddressLine1(e.target.value)}
+              placeholder="15 Awolowo Road"
+              autoComplete="address-line1"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="addressLine2">Apt / suite / floor (optional)</Label>
+            <Input
+              id="addressLine2"
+              value={addressLine2}
+              onChange={(e) => setAddressLine2(e.target.value)}
+              placeholder="Flat 3B"
+              autoComplete="address-line2"
+            />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="city">City</Label>
+              <Input
+                id="city"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Ikoyi"
+                autoComplete="address-level2"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>State</Label>
+              <Select value={addressState} onValueChange={setAddressState}>
+                <SelectTrigger>
+                  <SelectValue placeholder="State" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NG_STATES.map((s) => (
+                    <SelectItem key={s.code} value={s.code}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="postalCode">Postal code</Label>
+              <Input
+                id="postalCode"
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="101241"
+                className="font-mono"
+                autoComplete="postal-code"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Employment + inflow (background_information) ────────────── */}
+        <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+          <div>
+            <p className="font-medium text-sm">Employment</p>
+            <p className="text-xs text-muted-foreground">
+              Needed for USD virtual account compliance.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Employment status</Label>
+              <Select value={employmentStatus} onValueChange={setEmploymentStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose one" />
+                </SelectTrigger>
+                <SelectContent>
+                  {EMPLOYMENT_STATUSES.map((e) => (
+                    <SelectItem key={e.value} value={e.value}>
+                      {e.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="occupation">Occupation / job title</Label>
+              <Input
+                id="occupation"
+                value={occupation}
+                onChange={(e) => setOccupation(e.target.value)}
+                placeholder="Software engineer"
+                autoComplete="organization-title"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="expectedMonthlyInflowUsd">Expected monthly inflow (USD)</Label>
+            <Input
+              id="expectedMonthlyInflowUsd"
+              type="number"
+              min="0"
+              step="100"
+              value={expectedMonthlyInflowUsd}
+              onChange={(e) => setExpectedMonthlyInflowUsd(e.target.value)}
+              placeholder="5000"
+            />
+            <p className="text-xs text-muted-foreground">
+              Rough estimate of funds you expect to receive per month in USD.
+            </p>
           </div>
         </div>
 
@@ -405,6 +613,14 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
             file={liveness}
             onChange={setLiveness}
             icon={Video}
+          />
+          <FileUpload
+            label="Proof of address"
+            hint="Recent (last 3 months) utility bill, bank statement, or tenancy agreement showing your name + the address above."
+            accept={IMAGE_TYPES}
+            maxBytes={MAX_IMAGE_BYTES}
+            file={proofOfAddress}
+            onChange={setProofOfAddress}
           />
         </div>
 

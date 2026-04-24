@@ -46,6 +46,7 @@ const SignupSchema = z.object({
     .refine((v) => /[0-9]/.test(v), 'Must contain a number')
     .refine((v) => /[^A-Za-z0-9]/.test(v), 'Must contain a special character'),
   firstName: z.string().min(1).max(50).trim(),
+  middleName: z.string().min(2, 'Middle name required (min 2 chars)').max(60).trim(),
   lastName: z.string().min(1).max(50).trim(),
   agreedToTerms: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the Terms of Service' }),
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { email, phone, password, firstName, lastName } = parsed.data;
+  const { email, phone, password, firstName, middleName, lastName } = parsed.data;
 
   // 3. Block disposable emails
   if (isDisposableEmail(email)) {
@@ -162,6 +163,7 @@ export async function POST(request: NextRequest) {
           phoneBlindIndex: phoneIdx,
           passwordHash,
           firstName,
+          middleName,
           lastName,
           displayName: `${firstName} ${lastName}`,
           emailVerified: false,
