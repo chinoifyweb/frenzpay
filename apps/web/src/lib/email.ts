@@ -244,6 +244,32 @@ export async function sendContactFormNotification(data: { name: string; email: s
   })
 }
 
+/** Password reset link — 15-min TTL, one-time-use token. */
+export async function sendPasswordResetEmail(email: string, resetUrl: string) {
+  return resend.emails.send({
+    from: FROM_SUPPORT,
+    to: email,
+    subject: 'Reset your Frenz Pay password',
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Reset your password</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Someone (hopefully you) asked to reset the password on this Frenz Pay account. Click the button below within the next 15 minutes to pick a new one.</p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${resetUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Reset password</a>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">If the button doesn&rsquo;t work, copy and paste this link into your browser:</p>
+        <p style="color: #374151; font-size: 12px; line-height: 1.4; word-break: break-all; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: #f3f4f6; padding: 10px 12px; border-radius: 6px;">${resetUrl}</p>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6; margin-top: 24px;">Didn&rsquo;t ask for this? You can ignore this email &mdash; your password won&rsquo;t change. Reply to this mail if you think someone else is trying to get into your account.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
+      </div>
+    `,
+  })
+}
+
 /** Confirmation to the customer right after they submit KYC — sets 24h expectation. */
 export async function sendKYCSubmittedEmail(email: string, name: string) {
   return resend.emails.send({

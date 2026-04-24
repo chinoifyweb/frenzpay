@@ -15,6 +15,7 @@ import { generateSecureToken, hashToken } from '@frenzpay/auth';
 import { checkAuthRateLimit, rateLimitHeaders } from '@frenzpay/auth/rate-limit';
 import { redis } from '@/lib/redis';
 import { logger } from '@frenzpay/logger';
+import { sendPasswordResetEmail } from '@/lib/email';
 
 const Schema = z.object({
   email: z
@@ -73,8 +74,18 @@ export async function POST(request: NextRequest) {
       data: { userId: user.id, tokenHash, expiresAt },
     });
 
-    // TODO(phase-7): send reset email with link /reset-password?token={token}
     logger.info({ userId: user.id }, 'password reset token issued');
+
+    // Fire the reset email — best-effort, non-blocking. An SMTP hiccup
+    // shouldn't make the request hang or leak user-exists info to the caller.
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.frenzpay.co';
+    const resetUrl = `${appUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    void sendPasswordResetEmail(user.email, resetUrl).catch((err) =>
+      logger.warn(
+        { userId: user.id, err: err instanceof Error ? err.message : err },
+        'password reset email send failed',
+      ),
+    );
 
     if (process.env.NODE_ENV !== 'production') {
       // In dev, return the raw token so we can test without email
