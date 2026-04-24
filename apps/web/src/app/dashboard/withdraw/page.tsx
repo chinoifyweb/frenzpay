@@ -74,6 +74,9 @@ interface FxQuote {
   effectiveRate: number;
   rate_id: string | null;
   expires_at: string | null;
+  source?: 'graph' | 'manual';
+  withdrawalFeePercent?: number;
+  withdrawalFeeFlatCents?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -187,6 +190,9 @@ export default function WithdrawPage() {
           effectiveRate: json.effectiveRate,
           rate_id: json.rate_id ?? null,
           expires_at: json.expires_at ?? null,
+          source: json.source,
+          withdrawalFeePercent: json.withdrawalFeePercent,
+          withdrawalFeeFlatCents: json.withdrawalFeeFlatCents,
         });
       } catch (err) {
         setQuote(null);
@@ -381,8 +387,21 @@ export default function WithdrawPage() {
 
   // ── Render: main form ───────────────────────────────────────────────────
   const amountCents = Math.round(parseFloat(amountUsd || '0') * 100);
-  const estimatedKobo =
-    quote && amountCents > 0 ? Math.floor(amountCents * quote.effectiveRate) : 0;
+  // Net-of-fees NGN the customer actually receives. Fees (percentage + flat)
+  // are subtracted from the USD source amount first, then we convert.
+  const feeBreakdown = (() => {
+    if (!quote || amountCents <= 0) {
+      return { feePctCents: 0, feeFlatCents: 0, totalFeeCents: 0, netKobo: 0 };
+    }
+    const feePct = quote.withdrawalFeePercent ?? 1.5;
+    const feeFlatCents = quote.withdrawalFeeFlatCents ?? 0;
+    const feePctCents = Math.floor(amountCents * (feePct / 100));
+    const totalFeeCents = feePctCents + feeFlatCents;
+    const netSourceCents = Math.max(0, amountCents - totalFeeCents);
+    const netKobo = Math.floor(netSourceCents * quote.effectiveRate);
+    return { feePctCents, feeFlatCents, totalFeeCents, netKobo };
+  })();
+  const estimatedKobo = feeBreakdown.netKobo;
 
   return (
     <div className="mx-auto w-full max-w-xl space-y-6">
@@ -435,27 +454,58 @@ export default function WithdrawPage() {
             </p>
           )}
 
-          {quote && amountCents > 0 && (
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Mid rate</span>
-                <span className="font-mono">1 USD = ₦{quote.midRate.toFixed(2)}</span>
+          {quote && amountCents > 0 && (() => {
+            const feePct = quote.withdrawalFeePercent ?? 1.5;
+            const feeFlatCents = quote.withdrawalFeeFlatCents ?? 0;
+            const feePctCents = Math.floor(amountCents * (feePct / 100));
+            const totalFeeCents = feePctCents + feeFlatCents;
+            const netSourceCents = amountCents - totalFeeCents;
+            const netKobo = Math.max(0, Math.floor(netSourceCents * quote.effectiveRate));
+            return (
+              <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Rate</span>
+                  <span className="font-mono">
+                    1 USD = ₦{quote.effectiveRate.toFixed(2)}
+                    {quote.source === 'manual' && (
+                      <span className="ml-2 text-[10px] uppercase text-amber-600">manual</span>
+                    )}
+                  </span>
+                </div>
+                {quote.source !== 'manual' && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>(mid {quote.midRate.toFixed(2)} minus {quote.markupBps} bps markup)</span>
+                  </div>
+                )}
+                <Separator className="my-1" />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Fee (percentage)</span>
+                  <span className="font-mono">
+                    {feePct}% → {fmtUsd(feePctCents)}
+                  </span>
+                </div>
+                {feeFlatCents > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Fee (flat)</span>
+                    <span className="font-mono">{fmtUsd(feeFlatCents)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Total fees</span>
+                  <span className="font-mono">{fmtUsd(totalFeeCents)}</span>
+                </div>
+                <Separator className="my-1" />
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">USD debited</span>
+                  <span className="font-mono">{fmtUsd(amountCents)}</span>
+                </div>
+                <div className="flex items-center justify-between pt-1">
+                  <span className="font-medium">You receive</span>
+                  <span className="text-lg font-bold">{fmtNgn(netKobo)}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Our markup</span>
-                <span className="font-mono">{quote.markupBps} bps ({(quote.markupBps / 100).toFixed(2)}%)</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Effective rate</span>
-                <span className="font-mono">1 USD = ₦{quote.effectiveRate.toFixed(2)}</span>
-              </div>
-              <Separator className="my-2" />
-              <div className="flex items-center justify-between">
-                <span className="font-medium">You receive</span>
-                <span className="text-lg font-bold">{fmtNgn(estimatedKobo)}</span>
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </CardContent>
       </Card>
 

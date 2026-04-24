@@ -232,36 +232,51 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Quote the FX ────────────────────────────────────────────────────────
+  const fxMarkupBps = await readSetting<number>('fxMarkupBps', 50);
+  const fxManualRate = await readSetting<number>('fxManualRateUsdNgn', 0);
+  const withdrawalFeePct = await readSetting<number>('withdrawalFeePercent', 1.5);
+  const withdrawalFeeFlatCents = await readSetting<number>('withdrawalFeeFlatCents', 0);
+
   let rate = 0;
-  if (isGraphConfigured()) {
+  let effectiveRate = 0;
+  let rateSource: 'manual' | 'graph' | 'fallback' = 'graph';
+
+  if (fxManualRate > 0) {
+    // Admin override — no markup applied on top; the manual rate IS the rate.
+    rate = fxManualRate;
+    effectiveRate = fxManualRate;
+    rateSource = 'manual';
+  } else if (isGraphConfigured()) {
     try {
       const graphRate = await fetchGraphRate('USD', 'NGN');
       rate = graphRate.rate;
+      effectiveRate = rate * (1 - fxMarkupBps / 10_000);
     } catch (err) {
       logger.warn(
         { err: err instanceof Error ? err.message : err },
         '[withdraw] rate fetch failed, using fallback',
       );
-      rate = 1500; // fallback
+      rate = 1500;
+      effectiveRate = rate * (1 - fxMarkupBps / 10_000);
+      rateSource = 'fallback';
     }
   } else {
     rate = 1500; // dev stub
+    effectiveRate = rate * (1 - fxMarkupBps / 10_000);
+    rateSource = 'fallback';
   }
 
-  const fxMarkupBps = await readSetting<number>('fxMarkupBps', 50);
-  const withdrawalFeePct = await readSetting<number>('withdrawalFeePercent', 1.5);
-
-  // effective rate applies markup against the user
-  const effectiveRate = rate * (1 - fxMarkupBps / 10_000);
   // sourceAmountCents = USD cents. Convert to NGN kobo (100 kobo = 1 NGN).
-  // USD cents × rate → NGN "cents equivalent" isn't right; the rate is USD→NGN
-  // in units, so $1 (100 cents) at rate 1500 → 1500 NGN = 150000 kobo.
-  // So kobo = cents × rate × (100 / 100) = cents × rate. That's because
-  // cents÷100 → USD × rate → NGN × 100 → kobo. The 100s cancel.
+  // USD cents \u00d7 rate \u2192 NGN "cents equivalent": $1 (100 cents) at rate 1500 =
+  // 1500 NGN = 150000 kobo. So kobo = cents \u00d7 rate (the 100s cancel).
   const destAmountKobo = Math.floor(
     parsed.data.sourceAmountCents * effectiveRate,
   );
-  const feeCents = Math.floor(parsed.data.sourceAmountCents * (withdrawalFeePct / 100));
+  // Fee = percentage of source + flat USD fee on top.
+  const feePctCents = Math.floor(
+    parsed.data.sourceAmountCents * (withdrawalFeePct / 100),
+  );
+  const feeCents = feePctCents + withdrawalFeeFlatCents;
   const fxRateMicro = Math.floor(effectiveRate * 1_000_000);
 
   // ── Create Transaction + Withdrawal + Hold the funds ─────────────────────
@@ -291,8 +306,11 @@ export async function POST(req: NextRequest) {
         accountName: beneficiary.accountName,
         rateUsdNgn: rate,
         effectiveRateUsdNgn: effectiveRate,
-        fxMarkupBps,
+        fxMarkupBps: rateSource === 'manual' ? 0 : fxMarkupBps,
+        fxRateSource: rateSource,
         withdrawalFeePercent: withdrawalFeePct,
+        withdrawalFeeFlatCents,
+        feePctCents,
       },
     });
 
@@ -303,7 +321,8 @@ export async function POST(req: NextRequest) {
         sourceAmountCents: BigInt(parsed.data.sourceAmountCents),
         destAmountKobo: BigInt(destAmountKobo),
         fxRateMicro: BigInt(fxRateMicro),
-        fxMarkupBps,
+        // Manual-rate withdrawals have no markup on top (the rate IS the rate)
+        fxMarkupBps: rateSource === 'manual' ? 0 : fxMarkupBps,
         feeCents: BigInt(feeCents),
         status: 'PENDING',
         provider: 'graph',

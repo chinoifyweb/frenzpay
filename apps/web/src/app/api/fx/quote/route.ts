@@ -51,12 +51,41 @@ async function getMarkupBps(): Promise<number> {
   return 50; // default 0.5%
 }
 
+async function getManualRate(): Promise<number> {
+  try {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key: 'fxManualRateUsdNgn' },
+      select: { value: true },
+    });
+    if (row && typeof row.value === 'number') return row.value;
+    if (row && typeof row.value === 'string') return Number(row.value) || 0;
+  } catch { /* fall through */ }
+  return 0;
+}
+
+async function getFeeConfig(): Promise<{ percent: number; flatCents: number }> {
+  try {
+    const rows = await prisma.platformSetting.findMany({
+      where: { key: { in: ['withdrawalFeePercent', 'withdrawalFeeFlatCents'] } },
+      select: { key: true, value: true },
+    });
+    const map = Object.fromEntries(
+      rows.map((r: (typeof rows)[number]) => [r.key, r.value]),
+    );
+    const percent = typeof map.withdrawalFeePercent === 'number'
+      ? map.withdrawalFeePercent
+      : Number(map.withdrawalFeePercent) || 1.5;
+    const flatCents = typeof map.withdrawalFeeFlatCents === 'number'
+      ? map.withdrawalFeeFlatCents
+      : Number(map.withdrawalFeeFlatCents) || 0;
+    return { percent, flatCents };
+  } catch {
+    return { percent: 1.5, flatCents: 0 };
+  }
+}
+
 export async function GET(req: NextRequest) {
   await requireSession();
-
-  if (!isGraphConfigured()) {
-    return NextResponse.json({ error: 'FX quoting is not configured yet' }, { status: 503 });
-  }
 
   const { searchParams } = new URL(req.url);
   const base = (searchParams.get('base') ?? '').toUpperCase();
@@ -66,6 +95,31 @@ export async function GET(req: NextRequest) {
       { error: "Invalid base/quote. Try base=USD quote=NGN" },
       { status: 422 },
     );
+  }
+
+  const feeConfig = await getFeeConfig();
+
+  // Admin override — fxManualRateUsdNgn > 0 bypasses Graph entirely.
+  // Only applies to the USD\u2192NGN pair; other pairs still fetch Graph.
+  const manualRate = await getManualRate();
+  if (manualRate > 0 && base === 'USD' && quote === 'NGN') {
+    return NextResponse.json({
+      base_currency: base,
+      quote_currency: quote,
+      midRate: manualRate,
+      markupBps: 0,
+      effectiveRate: manualRate,
+      rate_id: null,
+      timestamp: new Date().toISOString(),
+      expires_at: null,
+      source: 'manual',
+      withdrawalFeePercent: feeConfig.percent,
+      withdrawalFeeFlatCents: feeConfig.flatCents,
+    });
+  }
+
+  if (!isGraphConfigured()) {
+    return NextResponse.json({ error: 'FX quoting is not configured yet' }, { status: 503 });
   }
 
   const cacheKey = `graph:fx:${base}:${quote}`;
@@ -111,5 +165,8 @@ export async function GET(req: NextRequest) {
     rate_id: raw!.rate_id ?? null,
     timestamp: raw!.timestamp ?? new Date().toISOString(),
     expires_at: raw!.expires_at ?? null,
+    source: 'graph',
+    withdrawalFeePercent: feeConfig.percent,
+    withdrawalFeeFlatCents: feeConfig.flatCents,
   });
 }

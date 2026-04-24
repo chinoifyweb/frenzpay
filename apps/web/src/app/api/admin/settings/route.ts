@@ -60,15 +60,34 @@ const SETTING_SCHEMAS = {
     description: 'Percentage fee on every withdrawal (0..10)',
     default: 1.5,
   },
+  withdrawalFeeFlatCents: {
+    schema: z.number().int().min(0).max(100_000),
+    description:
+      'Flat per-withdrawal fee in USD cents (adds on top of the percentage fee). E.g. 150 = $1.50 per payout.',
+    default: 0,
+  },
   fxMarkupBps: {
     schema: z.number().int().min(0).max(1000),
-    description: 'FX markup in basis points (100 = 1%) applied to USD→NGN quotes',
+    description:
+      'FX markup in basis points (100 = 1%) applied to the USD\u2192NGN mid-market rate. Ignored when fxManualRateUsdNgn is set > 0.',
     default: 50,
+  },
+  fxManualRateUsdNgn: {
+    schema: z.number().min(0).max(100_000),
+    description:
+      'Manual USD\u2192NGN rate override. 0 = fetch Graph live rate + apply fxMarkupBps. Any positive value bypasses Graph and uses this rate as the effective rate (no markup added on top).',
+    default: 0,
   },
   minWithdrawalUsd: {
     schema: z.number().min(0).max(100_000),
     description: 'Minimum withdrawal amount in USD',
     default: 10,
+  },
+  monthlyMaintenanceFeeUsdCents: {
+    schema: z.number().int().min(0).max(100_000),
+    description:
+      'Monthly account-maintenance fee in USD cents. 0 = disabled. Charged automatically by the cron worker on the 1st of each month to every active KYC-T2+ user with sufficient balance. Skipped if balance < fee.',
+    default: 0,
   },
 
   // Compliance

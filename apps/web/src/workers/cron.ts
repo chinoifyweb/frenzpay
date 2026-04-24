@@ -30,6 +30,7 @@ import { ongoingScreening } from './jobs/ongoing-screening';
 import { retentionSweep } from './jobs/retention-sweep';
 import { auditExport } from './jobs/audit-export';
 import { processMaturedLocks } from './jobs/process-matured-locks';
+import { monthlyMaintenanceFee } from './jobs/monthly-maintenance-fee';
 
 interface Job {
   name: string;
@@ -38,12 +39,16 @@ interface Job {
 }
 
 const jobs: Job[] = [
-  { name: 'session-cleanup',       schedule: '*/15 * * * *', fn: sessionCleanup },
-  { name: 'sanctions-refresh',     schedule: '0 2 * * *',    fn: sanctionsRefresh },
-  { name: 'ongoing-screening',     schedule: '0 3 * * *',    fn: ongoingScreening },
-  { name: 'retention-sweep',       schedule: '0 4 * * *',    fn: retentionSweep },
-  { name: 'audit-export',          schedule: '0 5 * * *',    fn: auditExport },
-  { name: 'process-matured-locks', schedule: '0 * * * *',    fn: processMaturedLocks },
+  { name: 'session-cleanup',         schedule: '*/15 * * * *', fn: sessionCleanup },
+  { name: 'sanctions-refresh',       schedule: '0 2 * * *',    fn: sanctionsRefresh },
+  { name: 'ongoing-screening',       schedule: '0 3 * * *',    fn: ongoingScreening },
+  { name: 'retention-sweep',         schedule: '0 4 * * *',    fn: retentionSweep },
+  { name: 'audit-export',            schedule: '0 5 * * *',    fn: auditExport },
+  { name: 'process-matured-locks',   schedule: '0 * * * *',    fn: processMaturedLocks },
+  // Monthly account maintenance fee — 01:30 on the 1st of every month,
+  // Africa/Lagos. Reads monthlyMaintenanceFeeUsdCents from platform_settings;
+  // no-op when 0. Idempotent per user per month via Transaction.idempotencyKey.
+  { name: 'monthly-maintenance-fee', schedule: '30 1 1 * *',   fn: monthlyMaintenanceFee },
 ];
 
 const env = process.env['NODE_ENV'] ?? 'development';

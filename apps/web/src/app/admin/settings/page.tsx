@@ -45,8 +45,11 @@ interface SettingsPayload {
   maintenanceMode: boolean;
 
   withdrawalFeePercent: number;
+  withdrawalFeeFlatCents: number;
   fxMarkupBps: number;
+  fxManualRateUsdNgn: number;
   minWithdrawalUsd: number;
+  monthlyMaintenanceFeeUsdCents: number;
 
   kycRequiredForWithdrawal: boolean;
   dailyWithdrawalLimitUsd: number;
@@ -70,8 +73,11 @@ const DEFAULTS: SettingsPayload = {
   announcement: '',
   maintenanceMode: false,
   withdrawalFeePercent: 1.5,
+  withdrawalFeeFlatCents: 0,
   fxMarkupBps: 50,
+  fxManualRateUsdNgn: 0,
   minWithdrawalUsd: 10,
+  monthlyMaintenanceFeeUsdCents: 0,
   kycRequiredForWithdrawal: true,
   dailyWithdrawalLimitUsd: 50_000,
   monthlyWithdrawalLimitUsd: 500_000,
@@ -272,67 +278,211 @@ export default function AdminSettingsPage() {
 
         {/* ── Fees & FX ─────────────────────────────────────────────────── */}
         <TabsContent value="fees">
-          <Card>
-            <CardHeader>
-              <CardTitle>Fees &amp; FX</CardTitle>
-              <CardDescription>
-                Withdrawal fee, FX markup, and minimum payout amount. Used by the Graph rail
-                quote engine.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label>Withdrawal Fee (%)</Label>
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    max="10"
-                    value={settings.withdrawalFeePercent}
-                    onChange={(e) =>
-                      set('withdrawalFeePercent', parseFloat(e.target.value) || 0)
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Percentage fee on every withdrawal.
-                  </p>
+          <div className="space-y-6">
+            {/* Withdrawal fees */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Withdrawal fees</CardTitle>
+                <CardDescription>
+                  Charged per-payout. Percentage + flat amount are added together.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Percentage fee (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={settings.withdrawalFeePercent}
+                      onChange={(e) =>
+                        set('withdrawalFeePercent', parseFloat(e.target.value) || 0)
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      % of the USD source amount. 1.5 = 1.5%.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Flat fee (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={(settings.withdrawalFeeFlatCents / 100).toFixed(2)}
+                      onChange={(e) =>
+                        set(
+                          'withdrawalFeeFlatCents',
+                          Math.max(0, Math.round(parseFloat(e.target.value || '0') * 100)),
+                        )
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Fixed amount per withdrawal, added on top of the percentage.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Minimum Withdrawal (USD)</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      value={settings.minWithdrawalUsd}
+                      onChange={(e) => set('minWithdrawalUsd', parseFloat(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Smallest amount a user can request.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>FX Markup (bps)</Label>
-                  <Input
-                    type="number"
-                    step="5"
-                    min="0"
-                    max="1000"
-                    value={settings.fxMarkupBps}
-                    onChange={(e) => set('fxMarkupBps', parseInt(e.target.value) || 0)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    100 bps = 1%. Added to USD→NGN mid-market rate.
-                  </p>
+                <Button
+                  disabled={saving !== null}
+                  onClick={() =>
+                    save('Withdrawal fees', [
+                      'withdrawalFeePercent',
+                      'withdrawalFeeFlatCents',
+                      'minWithdrawalUsd',
+                    ])
+                  }
+                >
+                  {saving === 'Withdrawal fees' && (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  )}
+                  Save Changes
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* FX rate */}
+            <Card>
+              <CardHeader>
+                <CardTitle>USD \u2192 NGN rate</CardTitle>
+                <CardDescription>
+                  By default we use Graph&apos;s live mid-market rate plus the markup below. Set a
+                  manual rate to override \u2014 useful when Graph&apos;s number drifts from the street rate.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>FX Markup (bps)</Label>
+                    <Input
+                      type="number"
+                      step="5"
+                      min="0"
+                      max="1000"
+                      value={settings.fxMarkupBps}
+                      onChange={(e) => set('fxMarkupBps', parseInt(e.target.value) || 0)}
+                      disabled={settings.fxManualRateUsdNgn > 0}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      100 bps = 1%. Subtracted from mid-market (sell-side).
+                      Ignored when manual rate is set.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Manual rate override (1 USD = ? NGN)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100000"
+                      value={settings.fxManualRateUsdNgn}
+                      onChange={(e) =>
+                        set('fxManualRateUsdNgn', parseFloat(e.target.value) || 0)
+                      }
+                      placeholder="0 = auto"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      0 means auto-fetch from Graph. Any positive number bypasses Graph + markup.
+                    </p>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Minimum Withdrawal (USD)</Label>
-                  <Input
-                    type="number"
-                    min="0"
-                    value={settings.minWithdrawalUsd}
-                    onChange={(e) => set('minWithdrawalUsd', parseFloat(e.target.value) || 0)}
-                  />
+                {settings.fxManualRateUsdNgn > 0 && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Manual rate is active: customers will see <strong>1 USD = \u20a6
+                      {settings.fxManualRateUsdNgn.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}</strong>. Set back to 0 to resume live Graph rates.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <Button
+                  disabled={saving !== null}
+                  onClick={() =>
+                    save('FX rate', ['fxMarkupBps', 'fxManualRateUsdNgn'])
+                  }
+                >
+                  {saving === 'FX rate' && (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  )}
+                  Save FX rate
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Monthly maintenance */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Monthly account maintenance</CardTitle>
+                <CardDescription>
+                  Automatic monthly charge on every active KYC-verified user.
+                  The cron worker runs on the 1st of each month and debits the fee from
+                  the user&apos;s USD balance. If balance is below the fee, the user is skipped
+                  (no negative balance) and retried the next month.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Monthly fee (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={(settings.monthlyMaintenanceFeeUsdCents / 100).toFixed(2)}
+                      onChange={(e) =>
+                        set(
+                          'monthlyMaintenanceFeeUsdCents',
+                          Math.max(0, Math.round(parseFloat(e.target.value || '0') * 100)),
+                        )
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      0 disables the charge entirely.
+                    </p>
+                  </div>
                 </div>
-              </div>
-              <Button
-                disabled={saving !== null}
-                onClick={() =>
-                  save('Fees & FX', ['withdrawalFeePercent', 'fxMarkupBps', 'minWithdrawalUsd'])
-                }
-              >
-                {saving === 'Fees & FX' && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
-                Save Changes
-              </Button>
-            </CardContent>
-          </Card>
+                {settings.monthlyMaintenanceFeeUsdCents > 0 && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Customers will be charged{' '}
+                      <strong>
+                        ${(settings.monthlyMaintenanceFeeUsdCents / 100).toFixed(2)}
+                      </strong>{' '}
+                      on the 1st of every month. Each charge writes a FEE Transaction
+                      with metadata.kind=&quot;maintenance&quot;, idempotent per user per month.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <Button
+                  disabled={saving !== null}
+                  onClick={() =>
+                    save('Maintenance fee', ['monthlyMaintenanceFeeUsdCents'])
+                  }
+                >
+                  {saving === 'Maintenance fee' && (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  )}
+                  Save maintenance fee
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         {/* ── Compliance ──────────────────────────────────────────────── */}
