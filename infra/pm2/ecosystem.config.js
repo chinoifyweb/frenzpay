@@ -51,6 +51,11 @@ module.exports = {
         NODE_ENV: 'production',
         PORT: 3200,     // 3000 is claimed by nghttpx (CyberPanel HTTP/2 proxy)
         HOSTNAME: '127.0.0.1',
+        // Pass through specific envs that must be available at fork time.
+        // Next.js standalone's dotenv loader handles most keys from the
+        // symlinked .env.production, but explicit forwarding here gives
+        // zero ambiguity for auth-critical vars.
+        FRENZPAY_ADMIN_EMAILS: process.env.FRENZPAY_ADMIN_EMAILS || '',
       },
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       error_file: path.join(LOG_DIR, 'web-error.log'),
