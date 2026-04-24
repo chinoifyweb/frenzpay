@@ -207,8 +207,23 @@ export default function AdminProvidersPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/admin/providers/status', { cache: 'no-store' })
-      if (!res.ok) throw new Error(`Failed to load (${res.status})`)
+      // `redirect: 'manual'` so a stale session doesn't silently follow the
+      // server's 307 \u2192 /login and hand us HTML we try to JSON.parse.
+      const res = await fetch('/api/admin/providers/status', { cache: 'no-store', redirect: 'manual' })
+      if (res.type === 'opaqueredirect' || res.status === 0) {
+        setError('Your session expired. Please log out and log back in.')
+        return
+      }
+      const ct = res.headers.get('content-type') ?? ''
+      if (!ct.includes('application/json')) {
+        setError(`Server returned a non-JSON response (${res.status || 'redirect'}). Try logging out and back in.`)
+        return
+      }
+      if (!res.ok) {
+        let msg = `Failed to load (${res.status})`
+        try { const body = await res.json(); if (body?.error) msg = body.error } catch { /* ignore */ }
+        throw new Error(msg)
+      }
       const json = (await res.json()) as { providers: ProviderStatus[] }
       setProviders(json.providers)
     } catch (err) {
