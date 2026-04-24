@@ -29,7 +29,7 @@ interface KeyInfo {
 }
 
 interface ProviderStatus {
-  id: 'bridge' | 'graph' | 'sentry';
+  id: 'graph' | 'sentry';
   name: string;
   purpose: string;
   /** Where the admin should go to get / rotate these keys */
@@ -60,42 +60,13 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const bridgeKey = process.env['BRIDGE_API_KEY'];
-  const bridgeWebhook = process.env['BRIDGE_WEBHOOK_SECRET'];
   const graphKey = process.env['GRAPH_API_KEY'];
   const graphWebhook = process.env['GRAPH_WEBHOOK_SECRET'];
   const sentryDsn = process.env['SENTRY_DSN'];
 
+  // Bridge provider is intentionally not surfaced here \u2014 it's managed on the
+  // legacy admin at admin.frenzpay.co/settings by operator preference.
   const providers: ProviderStatus[] = [
-    {
-      id: 'bridge',
-      name: 'Bridge',
-      purpose: 'USD virtual accounts + USDC custody + virtual cards',
-      dashboardUrl: 'https://dashboard.bridge.xyz',
-      status: bridgeKey && bridgeWebhook ? 'ok' : bridgeKey || bridgeWebhook ? 'partial' : 'missing',
-      blocks: [
-        'USD virtual account provisioning',
-        'USDC deposits and custody',
-        'Virtual Mastercard / Visa issuance',
-      ],
-      testable: !!bridgeKey,
-      keys: [
-        {
-          name: 'BRIDGE_API_KEY',
-          description: 'Server-side API key from the Bridge dashboard',
-          configured: !!bridgeKey,
-          tail: maskTail(bridgeKey),
-          mode: null,
-        },
-        {
-          name: 'BRIDGE_WEBHOOK_SECRET',
-          description: 'HMAC-SHA256 shared secret used to verify Bridge webhooks',
-          configured: !!bridgeWebhook,
-          tail: maskTail(bridgeWebhook),
-          mode: null,
-        },
-      ],
-    },
     {
       id: 'graph',
       name: 'Graph',

@@ -186,14 +186,25 @@ export async function POST(req: NextRequest) {
   }
 
   // Audit log — the name only. The value never touches the DB.
-  await prisma.auditLog.create({
+  // Admin-originated events go to admin_audit_logs; the user_audit_logs
+  // table has a FK to `users.id` which admin sessions don't satisfy
+  // (session.userId references admin_users, not users). Writing there
+  // would hit a P2003 FK violation and kill the whole response body.
+  await prisma.adminAuditLog.create({
     data: {
-      userId: session.userId,
+      adminId: session.userId,
       action: 'ENV_KEY_UPDATED',
       resourceType: 'EnvVar',
       resourceId: name as AllowedKey,
       metadata: { keyName: name, tail: maskTail(value) },
     },
+  }).catch((err) => {
+    // Never let audit-log failure bubble up \u2014 the write itself already
+    // succeeded. Log and move on.
+    logger.warn(
+      { err: err instanceof Error ? err.message : String(err), keyName: name },
+      'admin audit log write failed (non-fatal)',
+    );
   });
 
   logger.info(

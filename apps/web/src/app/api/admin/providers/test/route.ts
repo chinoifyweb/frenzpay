@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 
 const Schema = z.object({
-  provider: z.enum(['bridge', 'graph']),
+  provider: z.enum(['graph']),
 });
 
 interface TestResult {
@@ -184,9 +184,7 @@ export async function POST(req: NextRequest) {
   const { provider } = parsed.data;
 
   let result: TestResult;
-  if (provider === 'bridge') {
-    result = await testBridge();
-  } else if (provider === 'graph') {
+  if (provider === 'graph') {
     result = await testGraph();
   } else {
     result = {
@@ -196,6 +194,9 @@ export async function POST(req: NextRequest) {
       message: `No test implemented for provider '${provider as string}'`,
     };
   }
+  // testBridge is intentionally unused here; Bridge lives on the legacy
+  // admin at admin.frenzpay.co/settings.
+  void testBridge;
 
   return NextResponse.json({ provider, ...result });
 }
