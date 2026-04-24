@@ -95,6 +95,18 @@ if [[ -n "$PNPM_SRC" ]]; then
   else
     log "WARNING: .prisma/client source not found — DB calls will fail"
   fi
+
+  # Top-level shim for @prisma/client so the cron worker's require('@prisma/client')
+  # from cron.mjs resolves (Next traces it under .pnpm/... but provides no
+  # top-level symlink).
+  PRISMA_CLIENT_PKG_SRC=$(find "$PNPM_SRC" -maxdepth 5 -path "*@prisma+client*/node_modules/@prisma/client" -type d 2>/dev/null | head -1)
+  if [[ -n "$PRISMA_CLIENT_PKG_SRC" ]]; then
+    mkdir -p "$STANDALONE/node_modules/@prisma"
+    rsync -aL "$PRISMA_CLIENT_PKG_SRC/" "$STANDALONE/node_modules/@prisma/client/"
+    log "linked @prisma/client top-level shim for cron worker"
+  else
+    log "WARNING: @prisma/client package source not found — cron DB calls will fail"
+  fi
 fi
 
 # If there's a prisma binary, run migrations. This is opt-in via

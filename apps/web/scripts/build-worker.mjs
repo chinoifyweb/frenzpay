@@ -47,22 +47,20 @@ await mkdir(dirname(OUTFILE), { recursive: true });
 // External = resolved at runtime from the standalone node_modules. Anything NOT
 // listed here gets inlined into the bundle.
 //
-// NB: workspace packages (@frenzpay/*) MUST be inlined. Next.js traces their
-// source into standalone/packages/ rather than creating symlinks under
-// node_modules/@frenzpay/, so Node can't resolve the `@frenzpay/foo` import
-// specifier at runtime from cron.mjs. Inlining sidesteps that entirely.
+// NB: Next standalone's node_modules tree uses pnpm's flat .pnpm/... layout
+// with NO top-level symlinks for most packages. Inlining is safer than
+// externalising for pure-JS modules. Only things with native bindings
+// (Prisma engines, argon2) stay external — deploy.sh creates top-level
+// symlinks for those.
 const external = [
-  // Heavy / native deps best left unbundled — Next's standalone tracing pulled
-  // these into standalone/node_modules/ via /api routes that import them.
+  // Prisma has a C++ engine binary loaded via path walking; keep its package
+  // external so it picks up the engine from standalone/apps/web/.prisma/client
+  // that deploy.sh rsyncs in. deploy.sh also maintains the top-level
+  // node_modules/@prisma/client symlink so the require works from cron.mjs.
   '@prisma/client',
   '.prisma/client',
+  // Native Rust binding
   '@node-rs/argon2',
-  'ioredis',
-  'nodemailer',
-  'pino',
-  'pino-pretty',
-  // Everything else (incl. all @frenzpay/* workspace packages + node-cron)
-  // gets inlined so the runtime only needs the externals above.
 ];
 
 const result = await build({
