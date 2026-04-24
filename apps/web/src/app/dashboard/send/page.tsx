@@ -62,7 +62,7 @@ type Step = 'recipient' | 'amount' | 'pin' | 'success';
 
 // Smallest-unit helpers for all three currencies
 const DECIMALS: Record<Currency, number> = { USD: 2, NGN: 2, USDC: 6 };
-const SYMBOLS: Record<Currency, string> = { USD: '$', NGN: '\u20A6', USDC: '' };
+const SYMBOLS: Record<Currency, string> = { USD: '$', NGN: '₦', USDC: '' };
 
 function formatMinor(amount: string, currency: Currency): string {
   const raw = (amount ?? '0').replace(/[^0-9]/g, '') || '0';

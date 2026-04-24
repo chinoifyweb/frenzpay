@@ -85,7 +85,7 @@ function fmtUsd(cents: number): string {
   })}`;
 }
 function fmtNgn(kobo: number): string {
-  return `\u20a6${(kobo / 100).toLocaleString('en-US', {
+  return `₦${(kobo / 100).toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
@@ -359,7 +359,7 @@ export default function WithdrawPage() {
                 We&apos;re holding{' '}
                 {fmtUsd(Number(submittedWithdrawal.sourceAmountCents))} and will release{' '}
                 {fmtNgn(Number(submittedWithdrawal.destAmountKobo))} to your bank once an
-                admin approves the request \u2014 usually within 24h.
+                admin approves the request — usually within 24h.
               </p>
               <p className="text-xs text-muted-foreground">
                 Reference: <span className="font-mono">{submittedWithdrawal.id.slice(0, 8)}</span>
@@ -431,7 +431,7 @@ export default function WithdrawPage() {
           {quoteLoading && (
             <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
               <Loader2 className="h-3 w-3 animate-spin" />
-              Fetching rate\u2026
+              Fetching rate…
             </p>
           )}
 
@@ -439,7 +439,7 @@ export default function WithdrawPage() {
             <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Mid rate</span>
-                <span className="font-mono">1 USD = \u20a6{quote.midRate.toFixed(2)}</span>
+                <span className="font-mono">1 USD = ₦{quote.midRate.toFixed(2)}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Our markup</span>
@@ -447,7 +447,7 @@ export default function WithdrawPage() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Effective rate</span>
-                <span className="font-mono">1 USD = \u20a6{quote.effectiveRate.toFixed(2)}</span>
+                <span className="font-mono">1 USD = ₦{quote.effectiveRate.toFixed(2)}</span>
               </div>
               <Separator className="my-2" />
               <div className="flex items-center justify-between">
@@ -480,9 +480,9 @@ export default function WithdrawPage() {
                 >
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="font-medium text-sm">{b.accountName ?? '\u2014'}</p>
+                      <p className="font-medium text-sm">{b.accountName ?? '—'}</p>
                       <p className="text-xs text-muted-foreground">
-                        {b.bankName ?? b.bankCode} \u2022 {b.accountNumber}
+                        {b.bankName ?? b.bankCode} • {b.accountNumber}
                       </p>
                     </div>
                     {b.coolingPeriodEndsAt && new Date(b.coolingPeriodEndsAt) > new Date() && (
@@ -543,7 +543,7 @@ export default function WithdrawPage() {
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder={banksLoading ? 'Loading banks\u2026' : 'Choose a bank'} />
+                  <SelectValue placeholder={banksLoading ? 'Loading banks…' : 'Choose a bank'} />
                 </SelectTrigger>
                 <SelectContent className="max-h-[300px]">
                   {banks.map((b) => (
@@ -574,7 +574,7 @@ export default function WithdrawPage() {
             {resolving && (
               <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
                 <Loader2 className="h-3 w-3 animate-spin" />
-                Verifying account\u2026
+                Verifying account…
               </p>
             )}
             {newAccountName && !resolving && (
@@ -637,7 +637,7 @@ export default function WithdrawPage() {
                 </div>
               </div>
               <div className="rounded-lg border bg-muted/30 p-3 space-y-1">
-                <p className="font-medium">{selectedBeneficiary.accountName ?? '\u2014'}</p>
+                <p className="font-medium">{selectedBeneficiary.accountName ?? '—'}</p>
                 <p className="text-xs text-muted-foreground">
                   {selectedBeneficiary.bankName ?? selectedBeneficiary.bankCode}
                 </p>

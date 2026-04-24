@@ -297,7 +297,7 @@ export default function GraphCardsPage() {
       {/* Card list */}
       {listLoading ? (
         <Card><CardContent className="py-8 flex items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin mr-2" />Loading cards\u2026
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />Loading cards…
         </CardContent></Card>
       ) : cards.length === 0 ? (
         <Card className="border-dashed">
@@ -306,7 +306,7 @@ export default function GraphCardsPage() {
             <div>
               <p className="font-medium">No cards yet</p>
               <p className="text-sm text-muted-foreground">
-                Create your first virtual USD card \u2014 it spins up in seconds.
+                Create your first virtual USD card — it spins up in seconds.
               </p>
             </div>
             <Button onClick={() => setIssueOpen(true)}>
@@ -341,7 +341,7 @@ export default function GraphCardsPage() {
                   <div className="rounded-lg bg-gradient-to-br from-sky-600 to-indigo-700 p-4 text-white">
                     <p className="text-xs opacity-80 uppercase tracking-wider">Card number</p>
                     <p className="text-lg font-mono tracking-wider mt-1">
-                      {pending ? '\u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022 \u2022\u2022\u2022\u2022' : `\u2022\u2022\u2022\u2022 ${c.last4}`}
+                      {pending ? '•••• •••• •••• ••••' : `•••• ${c.last4}`}
                     </p>
                     <div className="mt-3 flex items-center gap-4 text-xs opacity-90">
                       <div>
@@ -349,7 +349,7 @@ export default function GraphCardsPage() {
                         <p className="font-mono">
                           {c.expiryMonth > 0
                             ? `${String(c.expiryMonth).padStart(2, '0')}/${String(c.expiryYear).slice(-2)}`
-                            : '\u2014'}
+                            : '—'}
                         </p>
                       </div>
                     </div>
@@ -357,7 +357,7 @@ export default function GraphCardsPage() {
 
                   {pending && (
                     <p className="text-xs text-muted-foreground">
-                      Graph is provisioning the PAN \u2014 full card details appear once the
+                      Graph is provisioning the PAN — full card details appear once the
                       webhook confirms (usually within a minute).
                     </p>
                   )}

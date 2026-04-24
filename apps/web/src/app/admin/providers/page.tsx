@@ -227,7 +227,7 @@ export default function AdminProvidersPage() {
     setError(null)
     try {
       // `redirect: 'manual'` so a stale session doesn't silently follow the
-      // server's 307 \u2192 /login and hand us HTML we try to JSON.parse.
+      // server's 307 → /login and hand us HTML we try to JSON.parse.
       const res = await fetch('/api/admin/providers/status', { cache: 'no-store', redirect: 'manual' })
       if (res.type === 'opaqueredirect' || res.status === 0) {
         setError('Your session expired. Please log out and log back in.')

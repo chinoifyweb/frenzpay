@@ -41,7 +41,7 @@ type Currency = 'USD' | 'NGN' | 'USDC'
 const UI_CURRENCIES: Currency[] = ['USD', 'NGN']
 
 const DECIMALS: Record<Currency, number> = { USD: 2, NGN: 2, USDC: 6 }
-const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '\u20A6', USDC: '' }
+const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '₦', USDC: '' }
 
 function formatMinor(amount: string | bigint, currency: Currency): string {
   const raw = typeof amount === 'bigint' ? amount.toString() : (amount ?? '0').replace(/[^0-9]/g, '') || '0'
@@ -447,7 +447,7 @@ export default function ConvertPage() {
                 pattern="[0-9]*"
                 className="mt-1.5 text-center font-mono text-lg tracking-[0.4em]"
                 maxLength={6}
-                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022"
+                placeholder="••••••"
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
                 autoFocus

@@ -8,9 +8,9 @@ export function cn(...inputs: ClassValue[]) {
 export function formatCurrency(amount: number, currency: string = 'USD'): string {
   const symbols: Record<string, string> = {
     USD: '$',
-    GBP: '\u00a3',
-    EUR: '\u20ac',
-    NGN: '\u20a6',
+    GBP: '£',
+    EUR: '€',
+    NGN: '₦',
   }
   const symbol = symbols[currency] || currency
   return `${symbol}${amount.toLocaleString('en-US', {
@@ -53,10 +53,10 @@ export function maskAccountNumber(accountNumber: string): string {
 
 export function getCurrencyFlag(currency: string): string {
   const flags: Record<string, string> = {
-    USD: '\ud83c\uddfa\ud83c\uddf8',
-    GBP: '\ud83c\uddec\ud83c\udde7',
-    EUR: '\ud83c\uddea\ud83c\uddfa',
-    NGN: '\ud83c\uddf3\ud83c\uddec',
+    USD: '🇺🇸',
+    GBP: '🇬🇧',
+    EUR: '🇪🇺',
+    NGN: '🇳🇬',
   }
-  return flags[currency] || '\ud83c\udf0d'
+  return flags[currency] || '🌍'
 }

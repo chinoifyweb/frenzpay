@@ -103,7 +103,7 @@ function formatMinor(amount: string | null | undefined, currency: Currency): str
     return `${isNegative ? '-' : ''}${body} USDC`;
   }
 
-  const symbol = currency === 'USD' ? '$' : '\u20A6';
+  const symbol = currency === 'USD' ? '$' : '₦';
   return `${isNegative ? '-' : ''}${symbol}${wholeGrouped}.${fraction}`;
 }
 

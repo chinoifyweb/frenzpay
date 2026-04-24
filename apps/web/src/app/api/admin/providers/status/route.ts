@@ -66,7 +66,7 @@ export async function GET() {
   const graphWebhookVerify = process.env['GRAPH_WEBHOOK_VERIFY'] ?? '1';
   const sentryDsn = process.env['SENTRY_DSN'];
 
-  // Bridge provider is intentionally not surfaced here \u2014 it's managed on the
+  // Bridge provider is intentionally not surfaced here — it's managed on the
   // legacy admin at admin.frenzpay.co/settings by operator preference.
   const providers: ProviderStatus[] = [
     {
@@ -76,8 +76,8 @@ export async function GET() {
       dashboardUrl: 'https://app.useoval.com',
       status: graphKey && graphWebhook ? 'ok' : graphKey || graphWebhook ? 'partial' : 'missing',
       blocks: [
-        'USD \u2192 NGN virtual account provisioning',
-        'EUR \u2192 NGN virtual account provisioning',
+        'USD → NGN virtual account provisioning',
+        'EUR → NGN virtual account provisioning',
         'Graph-issued virtual / physical cards',
         'NGN payouts to Nigerian banks + mobile money',
       ],
@@ -85,7 +85,7 @@ export async function GET() {
       keys: [
         {
           name: 'GRAPH_API_KEY',
-          description: 'Bearer token from Graph dashboard \u2192 Developers \u2192 API Keys. Sandbox + live use the same URL; the key determines the env.',
+          description: 'Bearer token from Graph dashboard → Developers → API Keys. Sandbox + live use the same URL; the key determines the env.',
           configured: !!graphKey,
           tail: maskTail(graphKey),
           mode: null,
@@ -101,7 +101,7 @@ export async function GET() {
           name: 'GRAPH_ENVIRONMENT',
           description: "Which Graph environment to hit: 'test' (sandbox, default) or 'live' (production). Must be flipped to 'live' before onboarding real customers.",
           configured: true,
-          tail: graphEnv, // not a secret \u2014 display the actual value
+          tail: graphEnv, // not a secret — display the actual value
           mode: graphEnv === 'live' ? 'live' : 'test',
         },
         {

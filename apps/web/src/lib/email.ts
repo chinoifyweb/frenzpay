@@ -286,7 +286,7 @@ export async function sendKYCSubmittedEmail(email: string, name: string) {
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Thanks for submitting your identity documents. Our team reviews every application manually to keep Frenz Pay safe.</p>
         <div style="background: #f0f9ff; border-radius: 12px; padding: 20px; margin: 24px 0;">
           <p style="margin: 0; color: #374151; font-size: 14px;"><strong>Typical turnaround: under 24 hours.</strong></p>
-          <p style="margin: 8px 0 0; color: #6b7280; font-size: 13px;">You&rsquo;ll get another email the moment we&rsquo;re done \u2014 approval or a short note if we need anything else.</p>
+          <p style="margin: 8px 0 0; color: #6b7280; font-size: 13px;">You&rsquo;ll get another email the moment we&rsquo;re done — approval or a short note if we need anything else.</p>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">In the meantime you can explore the dashboard. Money movement features unlock as soon as verification completes.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />

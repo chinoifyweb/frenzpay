@@ -68,9 +68,9 @@ function formatAmount(amountStr: string, currency: string): string {
   const amount = Number(amountStr) / 100;
   const symbol: Record<string, string> = {
     USD: '$',
-    EUR: '\u20ac',
-    GBP: '\u00a3',
-    NGN: '\u20a6',
+    EUR: '€',
+    GBP: '£',
+    NGN: '₦',
     USDC: 'USDC ',
     USDT: 'USDT ',
   };

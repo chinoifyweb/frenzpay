@@ -126,7 +126,7 @@ function formatBytes(bytes: number | string): string {
 const DOC_KIND_LABEL: Record<NonNullable<KYCSubmission['docKind']>, string> = {
   nin: 'NIN',
   passport: 'International Passport',
-  drivers_license: 'Driver\u2019s License',
+  drivers_license: 'Driver’s License',
 }
 
 const PURPOSE_LABEL: Record<string, string> = {
@@ -150,8 +150,8 @@ const SOURCE_LABEL: Record<string, string> = {
 }
 
 const DOC_TYPE_LABEL: Record<string, string> = {
-  id_front: 'ID \u2014 front',
-  id_back: 'ID \u2014 back',
+  id_front: 'ID — front',
+  id_back: 'ID — back',
   selfie: 'Selfie',
   liveness: 'Liveness',
   proof_of_address: 'Proof of address',
@@ -534,24 +534,24 @@ export default function KYCPage() {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div className="col-span-2">
                     <p className="text-muted-foreground text-xs">Full legal name (as printed on ID)</p>
-                    <p className="font-medium">{selectedSubmission.fullLegalName ?? '\u2014'}</p>
+                    <p className="font-medium">{selectedSubmission.fullLegalName ?? '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">ID type</p>
                     <p className="font-medium">
-                      {selectedSubmission.docKind ? DOC_KIND_LABEL[selectedSubmission.docKind] : '\u2014'}
+                      {selectedSubmission.docKind ? DOC_KIND_LABEL[selectedSubmission.docKind] : '—'}
                     </p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Document number</p>
-                    <p className="font-mono text-sm">{selectedSubmission.docNumber ?? '\u2014'}</p>
+                    <p className="font-mono text-sm">{selectedSubmission.docNumber ?? '—'}</p>
                   </div>
                   <div>
                     <p className="text-muted-foreground text-xs">Purpose of account</p>
                     <p className="font-medium">
                       {selectedSubmission.purposeOfAccount
                         ? (PURPOSE_LABEL[selectedSubmission.purposeOfAccount] ?? selectedSubmission.purposeOfAccount)
-                        : '\u2014'}
+                        : '—'}
                     </p>
                   </div>
                   <div>
@@ -559,7 +559,7 @@ export default function KYCPage() {
                     <p className="font-medium">
                       {selectedSubmission.sourceOfFunds
                         ? (SOURCE_LABEL[selectedSubmission.sourceOfFunds] ?? selectedSubmission.sourceOfFunds)
-                        : '\u2014'}
+                        : '—'}
                     </p>
                   </div>
                 </div>

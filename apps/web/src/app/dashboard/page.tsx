@@ -41,7 +41,7 @@ interface TxRow {
 }
 
 const DECIMALS: Record<Currency, number> = { USD: 2, NGN: 2, USDC: 6 }
-const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '\u20A6', USDC: '' }
+const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '₦', USDC: '' }
 const CURRENCY_GRADIENT: Record<Currency, string> = {
   USD: 'from-emerald-500/10 via-emerald-500/5 to-transparent',
   NGN: 'from-sky-500/10 via-sky-500/5 to-transparent',
@@ -141,7 +141,7 @@ export default function DashboardOverview() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="font-medium">
-                    {kycTier === 'T0' ? 'Verify your identity to start using FrenzPay' : `You\u2019re ${KYC_LABEL[kycTier]} verified`}
+                    {kycTier === 'T0' ? 'Verify your identity to start using FrenzPay' : `You’re ${KYC_LABEL[kycTier]} verified`}
                   </p>
                   <Badge variant="secondary" className="text-[10px]">{kycTier}</Badge>
                 </div>
@@ -224,7 +224,7 @@ export default function DashboardOverview() {
           <QuickAction icon={ArrowDownLeft} label="Receive"       sub="USD / Naira in"        href="/dashboard/wallet/receive?currency=USD" tone="emerald" />
           <QuickAction icon={Send}          label="Send"          sub="FrenzTag in seconds"   href="/dashboard/send"                         tone="sky" />
           <QuickAction icon={ArrowUpRight}  label="Withdraw"      sub="To any Naira bank"     href="/dashboard/withdraw"                     tone="red" />
-          <QuickAction icon={ArrowLeftRight} label="Convert"       sub="USD \u21c4 NGN \u21c4 USDC" href="/dashboard/convert"                 tone="purple" />
+          <QuickAction icon={ArrowLeftRight} label="Convert"       sub="USD ⇄ NGN ⇄ USDC" href="/dashboard/convert"                 tone="purple" />
           <QuickAction icon={PiggyBank}     label="Save"          sub="Flex, Target & Fixed"  href="/dashboard/savings"                      tone="pink" />
           <QuickAction icon={CreditCard}    label="Cards"         sub="Virtual USD cards"     href="/dashboard/cards"                        tone="indigo" />
           <QuickAction icon={ShieldCheck}   label="KYC"           sub={`Tier ${kycTier}`}     href="/dashboard/kyc"                          tone="amber" />

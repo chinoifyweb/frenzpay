@@ -122,7 +122,7 @@ function formatMinor(amount: string | null | undefined, currency: string): strin
     return `${isNegative ? '-' : ''}$${wholeGrouped}.${fraction}`;
   }
   if (upper === 'NGN') {
-    return `${isNegative ? '-' : ''}\u20A6${wholeGrouped}.${fraction}`;
+    return `${isNegative ? '-' : ''}₦${wholeGrouped}.${fraction}`;
   }
   return `${isNegative ? '-' : ''}${wholeGrouped}.${fraction} ${upper}`;
 }

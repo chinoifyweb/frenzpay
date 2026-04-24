@@ -203,7 +203,7 @@ export default function CryptoReceivePage() {
               <Select value={network} onValueChange={(v) => setNetwork(v as Network)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="TRC20">TRC20 (Tron) \u2014 low fees</SelectItem>
+                  <SelectItem value="TRC20">TRC20 (Tron) — low fees</SelectItem>
                   <SelectItem value="ERC20">ERC20 (Ethereum)</SelectItem>
                   <SelectItem value="POL">POL (Polygon)</SelectItem>
                 </SelectContent>
@@ -226,7 +226,7 @@ export default function CryptoReceivePage() {
           {listLoading ? (
             <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading\u2026
+              Loading…
             </div>
           ) : addresses.length === 0 ? (
             <p className="py-6 text-center text-sm text-muted-foreground">

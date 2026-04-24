@@ -247,7 +247,7 @@ export async function POST(req: NextRequest) {
       metadata: { keyName: name, tail: maskTail(value) },
     },
   }).catch((err) => {
-    // Never let audit-log failure bubble up \u2014 the write itself already
+    // Never let audit-log failure bubble up — the write itself already
     // succeeded. Log and move on.
     logger.warn(
       { err: err instanceof Error ? err.message : String(err), keyName: name },

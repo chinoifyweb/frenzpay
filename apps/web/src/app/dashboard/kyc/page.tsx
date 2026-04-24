@@ -52,26 +52,43 @@ import { useMe } from '@/hooks/use-me'
 
 const ID_TYPES = [
   { value: 'nin', label: 'National Identity Number (NIN)', helper: '11-digit NIN on your slip or card', requiresBack: false },
-  { value: 'drivers_license', label: 'Driver\u2019s License', helper: 'Front AND back required', requiresBack: true },
+  { value: 'drivers_license', label: 'Driver’s License', helper: 'Front AND back required', requiresBack: true },
   { value: 'passport', label: 'International Passport', helper: 'Photo page', requiresBack: false },
 ] as const
 type IdType = (typeof ID_TYPES)[number]['value']
 
 const PURPOSES = [
   { value: 'personal', label: 'Personal use' },
-  { value: 'business', label: 'Business / company' },
   { value: 'freelance', label: 'Freelance / contractor income' },
-  { value: 'ecommerce', label: 'E-commerce / online sales' },
-  { value: 'investment', label: 'Investment / trading' },
-  { value: 'remittance', label: 'Remittance / sending to family' },
+  { value: 'amazon_kdp', label: 'Amazon KDP royalties' },
+  { value: 'amazon_associates', label: 'Amazon Associates / affiliate' },
+  { value: 'upwork', label: 'Upwork earnings' },
+  { value: 'youtube', label: 'YouTube / AdSense payouts' },
+  { value: 'content_creator', label: 'Content creator (Patreon, Substack, etc.)' },
+  { value: 'dropshipping', label: 'Dropshipping / e-commerce' },
+  { value: 'saas', label: 'SaaS / product sales' },
+  { value: 'crypto_trading', label: 'Crypto trading' },
+  { value: 'investment', label: 'Stock / FX trading' },
+  { value: 'remittance', label: 'Remittance / family support' },
+  { value: 'business', label: 'Registered business / company' },
   { value: 'other', label: 'Other' },
 ] as const
 
 const SOURCES = [
   { value: 'salary', label: 'Salary / employment' },
-  { value: 'business', label: 'Business revenue' },
   { value: 'freelance', label: 'Freelance / contract work' },
+  { value: 'amazon_kdp', label: 'Amazon KDP / book royalties' },
+  { value: 'upwork', label: 'Upwork' },
+  { value: 'toptal', label: 'Toptal' },
+  { value: 'youtube', label: 'YouTube / AdSense' },
+  { value: 'patreon', label: 'Patreon / subscriptions' },
+  { value: 'ecommerce', label: 'E-commerce / Shopify / Etsy' },
+  { value: 'dropshipping', label: 'Dropshipping' },
+  { value: 'saas', label: 'SaaS / product revenue' },
+  { value: 'consulting', label: 'Consulting fees' },
+  { value: 'crypto', label: 'Crypto / DeFi' },
   { value: 'investments', label: 'Investments / dividends' },
+  { value: 'business', label: 'Registered business revenue' },
   { value: 'savings', label: 'Personal savings' },
   { value: 'gift', label: 'Gift / family support' },
   { value: 'other', label: 'Other' },
@@ -173,7 +190,7 @@ export default function KycPage() {
       {(state === 'not_started' || (state === 'rejected' && showForm)) && (
         <KycForm
           onSubmitted={() => {
-            toast.success('Submitted \u2014 we\u2019ll email you within 24 hours.')
+            toast.success('Submitted — we’ll email you within 24 hours.')
             setShowForm(false)
             void refresh()
             setState('pending')
@@ -196,7 +213,7 @@ function ApprovedCard() {
         <div className="space-y-1 max-w-md">
           <h2 className="text-lg font-semibold">Identity verified</h2>
           <p className="text-sm text-muted-foreground">
-            You\u2019re all set. Head to your wallet to activate a USD or EUR account and start receiving payments.
+            You’re all set. Head to your wallet to activate a USD or EUR account and start receiving payments.
           </p>
         </div>
         <Badge variant="secondary" className="gap-1.5 bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-400">
@@ -221,7 +238,7 @@ function PendingCard() {
         <div className="space-y-1 max-w-md">
           <h2 className="text-lg font-semibold">Under review</h2>
           <p className="text-sm text-muted-foreground">
-            We\u2019ve got your documents. Our team reviews every submission manually \u2014 you\u2019ll hear back by email within 24 hours.
+            We’ve got your documents. Our team reviews every submission manually — you’ll hear back by email within 24 hours.
           </p>
         </div>
         <Badge variant="secondary" className="gap-1.5">
@@ -580,7 +597,7 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
 
         <div className="space-y-3">
           <FileUpload
-            label="ID \u2014 front"
+            label="ID — front"
             hint="Clear photo of the ID front. All four corners visible, no glare."
             accept={IMAGE_TYPES}
             maxBytes={MAX_IMAGE_BYTES}
@@ -589,8 +606,8 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
           />
           {requiresBack && (
             <FileUpload
-              label="ID \u2014 back"
-              hint="Driver\u2019s License back side (address, signature)."
+              label="ID — back"
+              hint="Driver’s License back side (address, signature)."
               accept={IMAGE_TYPES}
               maxBytes={MAX_IMAGE_BYTES}
               file={idBack}
@@ -607,7 +624,7 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
           />
           <FileUpload
             label="Liveness"
-            hint="Short video of yourself (3\u20135 s) \u2014 say your name and today\u2019s date. Or a fresh photo with your thumb clearly on your chin."
+            hint="Short video of yourself (3–5 s) — say your name and today’s date. Or a fresh photo with your thumb clearly on your chin."
             accept={VIDEO_OR_IMAGE_TYPES}
             maxBytes={MAX_LIVENESS_BYTES}
             file={liveness}
@@ -706,7 +723,7 @@ function FileUpload({
           )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{file.name}</p>
-            <p className="text-xs text-muted-foreground">{fmtBytes(file.size)} \u00b7 {file.type}</p>
+            <p className="text-xs text-muted-foreground">{fmtBytes(file.size)} · {file.type}</p>
           </div>
           <Button variant="ghost" size="icon-sm" onClick={() => { onChange(null); if (inputRef.current) inputRef.current.value = '' }} aria-label="Remove file">
             <X className="h-4 w-4" />

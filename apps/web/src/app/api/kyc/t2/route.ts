@@ -60,10 +60,16 @@ const VALID_DOC_TYPES = new Set(['nin', 'passport', 'drivers_license']);
 const REQUIRES_ID_BACK = new Set(['drivers_license']);
 
 const VALID_PURPOSES = new Set([
-  'personal', 'business', 'freelance', 'ecommerce', 'investment', 'remittance', 'other',
+  'personal', 'freelance', 'amazon_kdp', 'amazon_associates', 'upwork',
+  'youtube', 'content_creator', 'dropshipping', 'saas', 'crypto_trading',
+  'investment', 'remittance', 'business',
+  // Legacy / generic
+  'ecommerce', 'other',
 ]);
 const VALID_SOURCES = new Set([
-  'salary', 'business', 'freelance', 'investments', 'gift', 'savings', 'other',
+  'salary', 'freelance', 'amazon_kdp', 'upwork', 'toptal', 'youtube',
+  'patreon', 'ecommerce', 'dropshipping', 'saas', 'consulting', 'crypto',
+  'investments', 'business', 'savings', 'gift', 'other',
 ]);
 
 const MIN_NAME_CHARS = 4;
@@ -131,7 +137,7 @@ export async function POST(req: NextRequest) {
   // ── Validate ─────────────────────────────────────────────────────────────
   if (!VALID_DOC_TYPES.has(docType)) {
     return NextResponse.json(
-      { error: 'Select a valid ID type (NIN, Driver\u2019s License, or International Passport).' },
+      { error: 'Select a valid ID type (NIN, Driver’s License, or International Passport).' },
       { status: 422 },
     );
   }
@@ -145,7 +151,7 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!VALID_PURPOSES.has(purposeOfAccount)) {
-    return NextResponse.json({ error: 'Select what you\u2019ll use this account for.' }, { status: 422 });
+    return NextResponse.json({ error: 'Select what you’ll use this account for.' }, { status: 422 });
   }
   if (!VALID_SOURCES.has(sourceOfFunds)) {
     return NextResponse.json({ error: 'Select your main source of funds.' }, { status: 422 });
@@ -392,7 +398,7 @@ export async function POST(req: NextRequest) {
     {
       submissionId: submission.id,
       status: 'PENDING',
-      message: 'We\u2019ve received your documents. Our team will review within 24 hours and email you with the outcome.',
+      message: 'We’ve received your documents. Our team will review within 24 hours and email you with the outcome.',
     },
     { status: 201 },
   );

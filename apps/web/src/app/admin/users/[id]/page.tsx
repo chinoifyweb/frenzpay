@@ -121,9 +121,9 @@ function formatAmount(smallestUnit: string, currency: string): string {
   const amount = Number(smallestUnit) / 100;
   const symbol: Record<string, string> = {
     USD: '$',
-    EUR: '\u20ac',
-    GBP: '\u00a3',
-    NGN: '\u20a6',
+    EUR: '€',
+    GBP: '£',
+    NGN: '₦',
   };
   const sym = symbol[currency] ?? `${currency} `;
   return `${sym}${amount.toLocaleString('en-US', {

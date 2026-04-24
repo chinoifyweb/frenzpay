@@ -23,7 +23,7 @@ function formatMinor(minor: string, currency: string): string {
   const frac = (n % 10n ** BigInt(decimals)).toString().padStart(decimals, '0');
   const g = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   if (currency === 'USD') return `$${g}.${frac}`;
-  if (currency === 'NGN') return `\u20A6${g}.${frac}`;
+  if (currency === 'NGN') return `₦${g}.${frac}`;
   return `${g}.${frac} ${currency}`;
 }
 

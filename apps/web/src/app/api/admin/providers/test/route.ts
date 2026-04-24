@@ -141,7 +141,7 @@ async function testGraph(): Promise<TestResult> {
           message: `Graph authentication succeeded (${path}).`,
         };
       }
-      // 404 etc \u2014 try next endpoint
+      // 404 etc — try next endpoint
       lastMsg = `HTTP ${res.status} on ${path}`;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

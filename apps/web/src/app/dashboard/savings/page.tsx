@@ -144,7 +144,7 @@ const PRODUCTS: SavingsProduct[] = [
     highlights: [
       'Top-tier rates',
       'Guaranteed payout at maturity',
-      'Not for money you\u2019ll need this month',
+      'Not for money you’ll need this month',
     ],
     requiresGoal: false,
   },
@@ -153,7 +153,7 @@ const PRODUCTS: SavingsProduct[] = [
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const DECIMALS: Record<Currency, number> = { USD: 2, NGN: 2, USDC: 6 }
-const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '\u20A6', USDC: '' }
+const SYMBOL: Record<Currency, string> = { USD: '$', NGN: '₦', USDC: '' }
 
 function formatMinor(amount: string, currency: Currency): string {
   const raw = (amount ?? '0').replace(/[^0-9]/g, '') || '0'
@@ -306,7 +306,7 @@ export default function SavingsPage() {
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'Failed to unlock')
-      toast.success(json.matured ? 'Unlocked \u2014 funds are in your wallet.' : 'Broken early. Funds returned.')
+      toast.success(json.matured ? 'Unlocked — funds are in your wallet.' : 'Broken early. Funds returned.')
       setBreakTarget(null); setBreakPin('')
       await fetchLocks()
     } catch (err) {
@@ -504,7 +504,7 @@ export default function SavingsPage() {
                       <SelectContent>
                         <SelectItem value="USD">USD — ${formatMinor(available.USD ?? '0', 'USD').slice(1)}</SelectItem>
                         <SelectItem value="USDC">USDC — {formatMinor(available.USDC ?? '0', 'USDC')}</SelectItem>
-                        <SelectItem value="NGN">NGN — \u20A6{formatMinor(available.NGN ?? '0', 'NGN').slice(1)}</SelectItem>
+                        <SelectItem value="NGN">NGN — ₦{formatMinor(available.NGN ?? '0', 'NGN').slice(1)}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -570,7 +570,7 @@ export default function SavingsPage() {
                       ? (selectedProduct.breakFeeBps === 0
                           ? 'Withdraw anytime with no fee.'
                           : `Early withdrawal: ${selectedProduct.breakFeeBps / 100}% fee of locked amount.`)
-                      : 'This product cannot be broken early. Only lock what you won\u2019t need.'}
+                      : 'This product cannot be broken early. Only lock what you won’t need.'}
                   </AlertDescription>
                 </Alert>
               </div>

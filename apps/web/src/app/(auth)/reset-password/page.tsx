@@ -71,7 +71,7 @@ function ResetPasswordInner() {
       return
     }
     if (!match) {
-      setError('The two passwords don\u2019t match.')
+      setError('The two passwords don’t match.')
       return
     }
     setSubmitting(true)
@@ -129,7 +129,7 @@ function ResetPasswordInner() {
             </div>
             <div>
               <h1 className="text-lg font-semibold">Password updated</h1>
-              <p className="text-sm text-muted-foreground">Taking you to login\u2026</p>
+              <p className="text-sm text-muted-foreground">Taking you to login…</p>
             </div>
           </CardContent>
         </Card>
@@ -190,7 +190,7 @@ function ResetPasswordInner() {
                 className="font-mono"
               />
               {confirm.length > 0 && !match && (
-                <p className="text-xs text-red-600">Passwords don\u2019t match.</p>
+                <p className="text-xs text-red-600">Passwords don’t match.</p>
               )}
             </div>
 
