@@ -74,6 +74,17 @@ const nextConfig: NextConfig = {
   // Security headers
   async headers() {
     return [
+      // API routes: never cache. OLS (LSCache) was caching 404 responses from
+      // before routes existed and serving them long after deploy. The
+      // X-LiteSpeed-Cache-Control header is OLS-specific and overrides any
+      // default cache policy the LiteSpeed edge may apply to /api/*.
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "X-LiteSpeed-Cache-Control", value: "no-cache, no-store, private" },
+          { key: "Cache-Control", value: "private, no-cache, no-store, max-age=0, must-revalidate" },
+        ],
+      },
       {
         source: "/(.*)",
         headers: [
