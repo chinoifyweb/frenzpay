@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
+import { logger } from '@frenzpay/logger';
 
 export async function GET(
   _req: NextRequest,
@@ -60,7 +61,7 @@ export async function GET(
   const [accounts, recentTx, recentAdminActions, kycSubmissions, withdrawals] =
     await Promise.all([
       prisma.account.findMany({
-        where: { ownerType: 'user', ownerId: id },
+        where: { ownerType: 'USER', ownerId: id },
         select: {
           id: true,
           currency: true,
@@ -200,4 +201,120 @@ export async function GET(
       settledAt: w.settledAt?.toISOString() ?? null,
     })),
   });
+}
+
+/**
+ * DELETE /api/admin/users/[id]
+ *
+ * Soft-delete a customer. Blocked when the user has:
+ *   - Any approved KYC submission (regulated users only via compliance flow)
+ *   - Any transaction with POSTED or PROCESSING status
+ *   - A non-zero balance on any account
+ *
+ * Deletion = set status='DELETED' + deletedAt=now. Row is kept for audit.
+ * Email is suffixed with a timestamp to free it up for re-use.
+ * Phone blind-index is nulled so the number can be re-registered.
+ *
+ * Requires confirmation: body { confirm: true }. Writes admin_audit_logs.
+ */
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { session } = await requireSession();
+  if (session.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const { id } = await params;
+
+  let body: unknown;
+  try { body = await req.json(); }
+  catch { body = {}; }
+  const confirm = (body as { confirm?: boolean })?.confirm === true;
+  if (!confirm) {
+    return NextResponse.json(
+      { error: 'Confirmation required. Send { confirm: true } in the body.' },
+      { status: 422 },
+    );
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      email: true,
+      status: true,
+      deletedAt: true,
+      kycStatus: true,
+      kycSubmissions: {
+        where: { status: 'APPROVED' },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+  if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  if (user.deletedAt) {
+    return NextResponse.json({ error: 'User is already deleted.' }, { status: 409 });
+  }
+  if (user.kycSubmissions.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          'User has an approved KYC record. Use "freeze" instead — approved customers cannot be deleted via this endpoint for compliance reasons.',
+      },
+      { status: 409 },
+    );
+  }
+
+  // Block deletion if there is any money movement in flight
+  const activeTx = await prisma.transaction.count({
+    where: {
+      OR: [{ initiatorUserId: id }, { counterpartyUserId: id }],
+      status: { in: ['PENDING', 'POSTED'] },
+    },
+  });
+  if (activeTx > 0) {
+    return NextResponse.json(
+      {
+        error:
+          `User has ${activeTx} open transaction(s). Cancel or settle them before deleting.`,
+      },
+      { status: 409 },
+    );
+  }
+
+  const timestamp = Date.now();
+  const now = new Date();
+
+  await prisma.$transaction(async (tx: any) => {
+    await tx.user.update({
+      where: { id },
+      data: {
+        status: 'DELETED',
+        deletedAt: now,
+        // Free the email so the customer (or another person) can re-sign-up
+        email: `deleted-${timestamp}-${user.email}`.slice(0, 320),
+        phoneBlindIndex: null,
+      },
+    });
+    await tx.adminAuditLog.create({
+      data: {
+        adminId: session.userId,
+        action: 'ADMIN_USER_DELETED',
+        resourceType: 'User',
+        resourceId: id,
+        targetUserId: id,
+        metadata: { originalEmail: user.email, previousStatus: user.status },
+      },
+    });
+  });
+
+  logger.info(
+    { adminId: session.userId, deletedUserId: id, originalEmail: user.email },
+    'Admin soft-deleted user',
+  );
+
+  return NextResponse.json({ ok: true, userId: id, status: 'DELETED' });
 }

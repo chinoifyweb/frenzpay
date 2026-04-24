@@ -7,11 +7,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
-import { ChevronLeft, ChevronRight, Eye, Search } from 'lucide-react';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import { ChevronLeft, ChevronRight, Eye, Loader2, Plus, Search, UserPlus } from 'lucide-react';
 
 interface UserRow {
   id: string;
@@ -61,12 +65,129 @@ export default function AdminUsersPage() {
   useEffect(() => { void fetchUsers(); }, [fetchUsers]);
   useEffect(() => { setPage(1); }, [q, status, tier]);
 
+  // ── Create-user dialog state ────────────────────────────────────────────
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newFirst, setNewFirst] = useState('');
+  const [newMiddle, setNewMiddle] = useState('');
+  const [newLast, setNewLast] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+
+  async function createUser() {
+    if (!newEmail || !newFirst || !newMiddle || !newLast || !newPhone || !newPassword) {
+      toast.error('All fields are required');
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: newEmail.trim(),
+          firstName: newFirst.trim(),
+          middleName: newMiddle.trim(),
+          lastName: newLast.trim(),
+          phone: newPhone.trim(),
+          password: newPassword,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        const fields = json.fields
+          ? Object.values(json.fields).flat().join('; ')
+          : null;
+        throw new Error(fields || json.error || `Create failed (${res.status})`);
+      }
+      toast.success(`Customer ${json.user.email} created`);
+      setCreateOpen(false);
+      setNewEmail(''); setNewFirst(''); setNewMiddle(''); setNewLast('');
+      setNewPhone(''); setNewPassword('');
+      await fetchUsers();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Create failed');
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Users</h1>
-        <p className="text-sm text-muted-foreground">Search, filter, and inspect user accounts.</p>
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Users</h1>
+          <p className="text-sm text-muted-foreground">Search, filter, and inspect user accounts.</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <UserPlus className="mr-1.5 h-4 w-4" />
+          Create customer
+        </Button>
       </div>
+
+      {/* ── Create customer dialog ─────────────────────────────────────── */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create a customer</DialogTitle>
+            <DialogDescription>
+              Admin-created accounts land in PENDING_KYC. Email + phone are marked
+              verified; the customer must still complete KYC to move money.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-email">Email</Label>
+              <Input id="nu-email" type="email" value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="client@example.com" />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="nu-first">First</Label>
+                <Input id="nu-first" value={newFirst}
+                  onChange={(e) => setNewFirst(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nu-middle">Middle</Label>
+                <Input id="nu-middle" value={newMiddle}
+                  onChange={(e) => setNewMiddle(e.target.value)} />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nu-last">Last</Label>
+                <Input id="nu-last" value={newLast}
+                  onChange={(e) => setNewLast(e.target.value)} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-phone">Phone (+country code)</Label>
+              <Input id="nu-phone" value={newPhone}
+                onChange={(e) => setNewPhone(e.target.value)}
+                placeholder="+2348012345678" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="nu-pw">Temporary password</Label>
+              <Input id="nu-pw" type="text" value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min 12 chars with upper/lower/digit"
+                className="font-mono" />
+              <p className="text-xs text-muted-foreground">
+                Share this with the customer securely. They should change it on first login.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)} disabled={creating}>
+              Cancel
+            </Button>
+            <Button onClick={createUser} disabled={creating}>
+              {creating && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Create customer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Card>
         <CardHeader className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center md:justify-between md:gap-4">

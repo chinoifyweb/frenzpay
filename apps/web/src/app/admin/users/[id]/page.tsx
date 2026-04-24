@@ -543,9 +543,59 @@ export default function AdminUserDetailPage({
 
       <Separator />
 
+      {/* ── Danger zone ─────────────────────────────────────────────────── */}
+      <Card className="border-destructive/30">
+        <CardHeader>
+          <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Delete customer</p>
+              <p className="text-xs text-muted-foreground">
+                Only possible for users without approved KYC or any open transactions.
+                For compliance reasons, an approved customer must be FROZEN instead.
+              </p>
+            </div>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={async () => {
+                if (
+                  !confirm(
+                    `Delete user ${user.email}?\n\nThis frees the email for re-use and soft-deletes the row. If the user has approved KYC or open transactions, the delete is blocked.`,
+                  )
+                ) {
+                  return;
+                }
+                try {
+                  const res = await fetch(`/api/admin/users/${user.id}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: true }),
+                  });
+                  const json = await res.json();
+                  if (!res.ok) {
+                    toast.error(json.error ?? `Delete failed (${res.status})`);
+                    return;
+                  }
+                  toast.success('User deleted');
+                  // Soft nav back to users list
+                  window.location.href = '/admin/users';
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : 'Delete failed');
+                }
+              }}
+            >
+              Delete user
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <p className="text-xs text-muted-foreground">
-        Destructive actions (freeze, unfreeze, role change) require TOTP MFA and are on separate
-        endpoints. Wire UI in when ops enroll a TOTP device.
+        Freeze / unfreeze / role-change require TOTP MFA and are on separate endpoints.
+        Wire UI in when ops enroll a TOTP device.
       </p>
     </div>
   );
