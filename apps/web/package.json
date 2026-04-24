@@ -26,6 +26,7 @@
     "@frenzpay/ui": "workspace:*",
     "@frenzpay/validators": "workspace:*",
     "@hookform/resolvers": "^5.2.2",
+    "@sentry/nextjs": "^9.0.0",
     "@simplewebauthn/browser": "^13.3.0",
     "@simplewebauthn/server": "^13.3.0",
     "@supabase/ssr": "^0.10.2",

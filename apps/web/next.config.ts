@@ -94,7 +94,12 @@ const nextConfig: NextConfig = {
                 "connect-src 'self'",
                 "https://api.frenzpay.co",
                 "https://api.bridge.xyz",
+                // Sentry ingest hosts — regional variants. CSP `*` is a
+                // single-label wildcard so we list each region prefix the
+                // SDK might dial.
                 "https://*.ingest.sentry.io",
+                "https://*.ingest.us.sentry.io",
+                "https://*.ingest.de.sentry.io",
               ].join(" "),
               // iFrames: Bridge card iframe, Turnstile
               "frame-src https://*.bridge.xyz https://challenges.cloudflare.com",
