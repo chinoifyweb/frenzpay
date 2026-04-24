@@ -42,24 +42,31 @@ export async function gateAdminOp(input: AdminOpInput): Promise<AdminOpGate> {
     };
   }
 
-  // Look up the admin's active TOTP enrollment
-  const mfa = await prisma.mfaSecret.findFirst({
-    where: { userId: input.adminUserId, type: 'totp', isActive: true },
-    select: { secret: true },
+  // Admins store their TOTP secret inline on the admin_users table, not in the
+  // user-facing mfa_secrets table (that FK'd into users.id). The secret is
+  // stored as an encrypted JSON CipherPayload string.
+  const admin = await prisma.adminUser.findUnique({
+    where: { id: input.adminUserId },
+    select: { mfaSecret: true, isActive: true },
   });
 
-  if (!mfa) {
+  if (!admin || !admin.isActive) {
+    return { ok: false, status: 403, error: 'Admin account is not active.' };
+  }
+  if (!admin.mfaSecret) {
     return {
       ok: false,
       status: 403,
-      error: 'Admin TOTP is not enrolled. Break-glass ops require TOTP.',
+      error: 'Admin TOTP is not enrolled. Enrol one at /admin/security before running break-glass ops.',
     };
   }
 
   // Decrypt the stored TOTP secret (Base32) and verify the code
   let base32Secret: string;
   try {
-    base32Secret = decryptField(mfa.secret as unknown as never);
+    // The stored mfaSecret is a JSON-serialised CipherPayload
+    const cipher = JSON.parse(admin.mfaSecret);
+    base32Secret = decryptField(cipher);
   } catch {
     return { ok: false, status: 403, error: 'Failed to load admin TOTP secret' };
   }

@@ -24,6 +24,8 @@ import {
   Loader2,
   ShieldCheck,
   ShieldAlert,
+  Snowflake,
+  Unlock,
   Mail,
   Phone,
   Globe,
@@ -33,6 +35,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -41,6 +46,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
 import { formatDateTime } from '@/lib/utils';
 
@@ -544,48 +557,149 @@ export default function AdminUserDetailPage({
       <Separator />
 
       {/* ── Danger zone ─────────────────────────────────────────────────── */}
+      <DangerZone user={user} />
+
+      <p className="text-xs text-muted-foreground">
+        Freeze / unfreeze require TOTP MFA. Enrol one at{' '}
+        <Link href="/admin/security" className="text-primary hover:underline">
+          /admin/security
+        </Link>
+        .
+      </p>
+    </div>
+  );
+}
+
+// ── Danger zone (freeze / unfreeze / delete) ───────────────────────────────
+
+function DangerZone({ user }: { user: UserDetail['user'] }) {
+  const [modalMode, setModalMode] = useState<'freeze' | 'unfreeze' | null>(null);
+  const [reason, setReason] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const isSuspended = user.status === 'SUSPENDED';
+  const isDeleted = user.status === 'DELETED';
+
+  async function submitFreezeOrUnfreeze() {
+    if (!modalMode) return;
+    if (!/^\d{6}$/.test(totpCode)) {
+      toast.error('Enter the 6-digit TOTP code from your authenticator');
+      return;
+    }
+    if (reason.trim().length < 20) {
+      toast.error('Reason must be at least 20 characters');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/${modalMode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totpCode, reason: reason.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? `${modalMode} failed (${res.status})`);
+        return;
+      }
+      toast.success(modalMode === 'freeze' ? 'User frozen' : 'User unfrozen');
+      setModalMode(null);
+      setReason('');
+      setTotpCode('');
+      // Hard reload so the detail page reflects new status
+      window.location.reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : `${modalMode} failed`);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function deleteUser() {
+    if (
+      !confirm(
+        `Delete user ${user.email}?\n\nThis frees the email for re-use and soft-deletes the row. If the user has approved KYC or open transactions, the delete is blocked.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        toast.error(json.error ?? `Delete failed (${res.status})`);
+        return;
+      }
+      toast.success('User deleted');
+      window.location.href = '/admin/users';
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
+    }
+  }
+
+  return (
+    <>
       <Card className="border-destructive/30">
         <CardHeader>
           <CardTitle className="text-base text-destructive">Danger zone</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="space-y-4">
+          {/* Freeze / Unfreeze */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">
+                {isSuspended ? 'Unfreeze account' : 'Freeze account'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {isSuspended
+                  ? 'Restore money-movement access. Requires TOTP + reason.'
+                  : 'Block all send / withdraw / card actions immediately. Requires TOTP + reason.'}
+              </p>
+            </div>
+            {isSuspended ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setModalMode('unfreeze'); setReason(''); setTotpCode(''); }}
+                disabled={isDeleted}
+              >
+                <Unlock className="mr-1.5 h-4 w-4" />
+                Unfreeze
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => { setModalMode('freeze'); setReason(''); setTotpCode(''); }}
+                disabled={isDeleted}
+              >
+                <Snowflake className="mr-1.5 h-4 w-4" />
+                Freeze
+              </Button>
+            )}
+          </div>
+
+          <Separator />
+
+          {/* Delete */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium">Delete customer</p>
               <p className="text-xs text-muted-foreground">
-                Only possible for users without approved KYC or any open transactions.
-                For compliance reasons, an approved customer must be FROZEN instead.
+                Only for users without approved KYC or open transactions. For approved
+                customers use freeze instead.
               </p>
             </div>
             <Button
               variant="destructive"
               size="sm"
-              onClick={async () => {
-                if (
-                  !confirm(
-                    `Delete user ${user.email}?\n\nThis frees the email for re-use and soft-deletes the row. If the user has approved KYC or open transactions, the delete is blocked.`,
-                  )
-                ) {
-                  return;
-                }
-                try {
-                  const res = await fetch(`/api/admin/users/${user.id}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ confirm: true }),
-                  });
-                  const json = await res.json();
-                  if (!res.ok) {
-                    toast.error(json.error ?? `Delete failed (${res.status})`);
-                    return;
-                  }
-                  toast.success('User deleted');
-                  // Soft nav back to users list
-                  window.location.href = '/admin/users';
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : 'Delete failed');
-                }
-              }}
+              onClick={deleteUser}
+              disabled={isDeleted}
             >
               Delete user
             </Button>
@@ -593,10 +707,74 @@ export default function AdminUserDetailPage({
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground">
-        Freeze / unfreeze / role-change require TOTP MFA and are on separate endpoints.
-        Wire UI in when ops enroll a TOTP device.
-      </p>
-    </div>
+      {/* Freeze / Unfreeze modal */}
+      <Dialog
+        open={modalMode !== null}
+        onOpenChange={(open) => { if (!open) setModalMode(null); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {modalMode === 'freeze' ? 'Freeze account' : 'Unfreeze account'}
+            </DialogTitle>
+            <DialogDescription>
+              {modalMode === 'freeze'
+                ? 'This logs the user out of all devices and blocks all money movement until unfrozen.'
+                : 'This restores money-movement access.'}
+              {' '}Both the TOTP code and a reason are required.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="dz-reason">Reason (min 20 chars)</Label>
+              <Textarea
+                id="dz-reason"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder={
+                  modalMode === 'freeze'
+                    ? 'Suspected account takeover reported via support; freezing pending investigation.'
+                    : 'Investigation complete, no fraud found, restoring access.'
+                }
+                rows={3}
+                disabled={submitting}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="dz-totp">6-digit TOTP code</Label>
+              <Input
+                id="dz-totp"
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="font-mono text-lg tracking-widest text-center"
+                maxLength={6}
+                disabled={submitting}
+              />
+              <p className="text-xs text-muted-foreground">
+                If you haven&apos;t enrolled TOTP yet, go to{' '}
+                <Link href="/admin/security" className="text-primary hover:underline">
+                  /admin/security
+                </Link>{' '}
+                first.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModalMode(null)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button
+              variant={modalMode === 'freeze' ? 'destructive' : 'default'}
+              onClick={submitFreezeOrUnfreeze}
+              disabled={submitting || totpCode.length !== 6 || reason.trim().length < 20}
+            >
+              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Confirm {modalMode}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

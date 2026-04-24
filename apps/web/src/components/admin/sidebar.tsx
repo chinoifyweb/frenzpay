@@ -16,6 +16,7 @@ import {
   Menu,
   LogOut,
   Zap,
+  KeyRound,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NAV_ITEMS } from '@/lib/constants'
@@ -39,6 +40,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   AlertTriangle,
   Settings,
   Zap,
+  KeyRound,
 }
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

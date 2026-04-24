@@ -62,6 +62,7 @@ export const NAV_ITEMS = {
     { label: 'Transactions', href: '/admin/transactions', icon: 'ArrowUpDown' },
     { label: 'Withdrawals', href: '/admin/withdrawals', icon: 'ArrowUpRight' },
     { label: 'Providers', href: '/admin/providers', icon: 'Zap' },
+    { label: 'Security', href: '/admin/security', icon: 'KeyRound' },
     { label: 'Settings', href: '/admin/settings', icon: 'Settings' },
   ],
 }
