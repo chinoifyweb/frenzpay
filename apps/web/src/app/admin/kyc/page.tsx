@@ -77,7 +77,7 @@ interface KYCSubmission {
   fullLegalName: string | null
   /** Decrypted server-side — one of NIN / passport / driver's number */
   docNumber: string | null
-  docKind: 'nin' | 'passport' | 'drivers_license' | null
+  docKind: 'nin' | 'passport' | 'drivers_license' | 'voters_card' | null
   purposeOfAccount: string | null
   sourceOfFunds: string | null
   /** 'recorded' = captured live by the in-browser recorder.
@@ -133,6 +133,7 @@ const DOC_KIND_LABEL: Record<NonNullable<KYCSubmission['docKind']>, string> = {
   nin: 'NIN',
   passport: 'International Passport',
   drivers_license: 'Driver’s License',
+  voters_card: 'Voter’s Card (PVC)',
 }
 
 const PURPOSE_LABEL: Record<string, string> = {
@@ -579,9 +580,28 @@ export default function KYCPage() {
 
               {/* Documents — each opens in a new tab, streamed decrypted */}
               <div className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Documents ({selectedSubmission.documents.length})
-                </h3>
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Documents ({selectedSubmission.documents.length})
+                  </h3>
+                </div>
+                {/* Reviewer reminder — liveness is upload-only now (we
+                    removed the in-browser recorder). Every clip is the
+                    customer's own recording, so the reviewer is the only
+                    line of defence against a deepfake / replayed video.
+                    The yellow nudge keeps that top of mind on every
+                    review. */}
+                {selectedSubmission.documents.some((d) => d.docType === 'liveness') && (
+                  <div className="rounded-md border border-amber-300/70 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                    <p className="font-medium mb-0.5">⚠ Liveness review checklist</p>
+                    <ul className="list-disc list-inside space-y-0.5 ml-1 opacity-90">
+                      <li>Face in the video matches the selfie AND the photo on the ID.</li>
+                      <li>Customer says their full name + a current date out loud.</li>
+                      <li>Head turns left / right / up — not a static image with audio.</li>
+                      <li>Lighting + background look natural; no obvious looping or stitching.</li>
+                    </ul>
+                  </div>
+                )}
                 {selectedSubmission.documents.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic">No documents attached.</p>
                 ) : (

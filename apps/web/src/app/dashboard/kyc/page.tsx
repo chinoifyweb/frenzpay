@@ -31,6 +31,7 @@ import {
   Shield,
   ShieldCheck,
   Upload,
+  Video as VideoIcon,
   X,
 } from 'lucide-react'
 
@@ -46,7 +47,6 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useMe } from '@/hooks/use-me'
-import { LivenessRecorder } from '@/components/kyc/liveness-recorder'
 
 // ── Field option lists (must match server-side enums in /api/kyc/t2) ────────
 
@@ -54,6 +54,7 @@ const ID_TYPES = [
   { value: 'nin', label: 'National Identity Number (NIN)', helper: '11-digit NIN on your slip or card', requiresBack: false },
   { value: 'drivers_license', label: 'Driver’s License', helper: 'Front AND back required', requiresBack: true },
   { value: 'passport', label: 'International Passport', helper: 'Photo page', requiresBack: false },
+  { value: 'voters_card', label: 'Voter’s Card (PVC)', helper: 'Front AND back required', requiresBack: true },
 ] as const
 type IdType = (typeof ID_TYPES)[number]['value']
 
@@ -96,9 +97,20 @@ const SOURCES = [
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-// Liveness mime + size are enforced inside <LivenessRecorder> (which only
-// produces what MediaRecorder can output) and re-checked server-side in
-// /api/kyc/t2 — no client constants needed here.
+// Liveness is now an upload-only flow — customers were running into
+// camera-permission walls on Android Brave / locked-down browsers and
+// bouncing off KYC entirely. The customer records on their own using
+// their phone's camera app and uploads the clip; admin matches it
+// manually against the selfie + ID. Mirrors the server allow-list in
+// /api/kyc/t2 (ALLOWED_VIDEO_MIME).
+const VIDEO_TYPES = [
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/3gpp',
+  'video/x-matroska',
+]
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024
 
 // Nigerian state 2-letter codes as expected by Graph's address object.
 const NG_STATES = [
@@ -533,6 +545,9 @@ function KycForm({
               onChange={(e) => setFullLegalName(e.target.value)}
               autoComplete="name"
             />
+            <p className="text-xs text-muted-foreground">
+              Enter your name <span className="font-medium">exactly as it appears on your ID</span> — same spelling, same order, same spacing. If your ID has no middle name, leave it out here too. Mismatches are the #1 reason KYC gets rejected.
+            </p>
           </div>
         </div>
 
@@ -723,11 +738,30 @@ function KycForm({
             file={selfie}
             onChange={setSelfie}
           />
-          <LivenessRecorder
+          {/* Liveness — upload-only. The in-browser recorder hit too many
+              camera-permission walls on Android Brave + corp-MDM browsers,
+              so we let the customer record on their phone's native camera
+              app and upload the clip. A reviewer matches the face + voice
+              against the selfie + ID manually. */}
+          <div className="rounded-lg border border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20 p-3 text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
+            <p className="font-medium mb-1.5">📹 How to record your liveness video</p>
+            <ol className="list-decimal list-inside space-y-1 ml-1">
+              <li>Open your phone’s camera app and switch to the <span className="font-medium">front camera (selfie)</span>.</li>
+              <li>Hold the phone at face height, good lighting, no hat or sunglasses.</li>
+              <li>Hit record and clearly say: <span className="italic">“My name is [your full name], and today is [today’s date].”</span></li>
+              <li>Slowly turn your head <span className="font-medium">left, then right, then up</span> — a few seconds in each direction.</li>
+              <li>Stop recording. Total length: <span className="font-medium">5–15 seconds</span>. Keep the file under 25 MB.</li>
+              <li>Tap the upload box below and pick the clip from your gallery.</li>
+            </ol>
+          </div>
+          <FileUpload
             label="Liveness video"
-            hint="Look into the front camera and clearly say your full name and today’s date. We record 3–5 seconds — no uploads from your gallery."
+            hint="Selfie video saying your name + today’s date, with head turns left/right/up. MP4, MOV, WebM, MKV, or 3GP."
+            accept={VIDEO_TYPES}
+            maxBytes={MAX_VIDEO_BYTES}
             file={liveness}
             onChange={setLiveness}
+            icon={VideoIcon}
           />
           <FileUpload
             label="Proof of address"
@@ -788,8 +822,23 @@ function FileUpload({
   function handlePick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null
     if (!f) return
-    if (!accept.includes(f.type)) {
-      toast.error(`${label}: ${f.type} is not allowed.`)
+    // Some Android galleries strip the mime on picked files. Fall back to
+    // the extension if the mime is missing — but never if the mime is
+    // present-and-wrong. This stops images sneaking into the video slot
+    // (they'd have a real image/* mime that would fail the explicit
+    // check) while still letting through 3GP / MKV gallery picks.
+    const mime = (f.type || '').toLowerCase()
+    const ext = (f.name.split('.').pop() || '').toLowerCase()
+    const EXT_TO_MIME: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf',
+      mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm',
+      mov: 'video/quicktime', qt: 'video/quicktime', mkv: 'video/x-matroska',
+      '3gp': 'video/3gpp', '3gpp': 'video/3gpp',
+    }
+    const inferred = EXT_TO_MIME[ext]
+    const effective = mime || inferred || ''
+    if (!effective || !accept.includes(effective)) {
+      toast.error(`${label}: ${mime || `.${ext}` || 'this file'} is not allowed.`)
       e.target.value = ''
       return
     }

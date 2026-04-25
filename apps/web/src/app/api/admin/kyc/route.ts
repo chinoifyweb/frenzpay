@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
         nin: true,
         passportNumber: true,
         driverLicenseNumber: true,
+        votersCardNumber: true,
         purposeOfAccount: true,
         sourceOfFunds: true,
         user: {
@@ -121,16 +122,19 @@ export async function GET(req: NextRequest) {
       tryDecrypt(s.nin) ??
       tryDecrypt(s.passportNumber) ??
       tryDecrypt(s.driverLicenseNumber) ??
+      tryDecrypt(s.votersCardNumber) ??
       null,
     docKind:
       s.nin ? 'nin'
       : s.passportNumber ? 'passport'
       : s.driverLicenseNumber ? 'drivers_license'
+      : s.votersCardNumber ? 'voters_card'
       : null,
     // Drop raw ciphertexts from the response
     nin: undefined,
     passportNumber: undefined,
     driverLicenseNumber: undefined,
+    votersCardNumber: undefined,
     livenessSource: livenessSourceById.get(s.id) ?? null,
     // Serialise BigInt file sizes so JSON.stringify doesn't crash
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

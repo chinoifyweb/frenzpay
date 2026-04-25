@@ -68,8 +68,14 @@ const ALLOWED_VIDEO_MIME = new Set([
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;        // 10 MB per image
 const MAX_LIVENESS_BYTES = 25 * 1024 * 1024;     // 25 MB for liveness (video)
 
-const VALID_DOC_TYPES = new Set(['nin', 'passport', 'drivers_license']);
-const REQUIRES_ID_BACK = new Set(['drivers_license']);
+// Voter's card (PVC) is added to match the doc types Graph accepts at
+// https://usegraph.readme.io/reference/upgrade-person-kyc — customers who
+// only carry their PVC were getting bounced before.
+const VALID_DOC_TYPES = new Set(['nin', 'passport', 'drivers_license', 'voters_card']);
+// Both the back of a driver's licence (address + signature) and the back
+// of a voter's card (polling unit / signature block) carry information we
+// need for review, so both require an idBack upload.
+const REQUIRES_ID_BACK = new Set(['drivers_license', 'voters_card']);
 
 const VALID_PURPOSES = new Set([
   'personal', 'freelance', 'amazon_kdp', 'amazon_associates', 'upwork',
@@ -290,10 +296,11 @@ export async function POST(req: NextRequest) {
   const encryptedPostal = encryptField(postalCode, session.userId);
 
   // Map doc type to the specific encrypted column in KycSubmission
-  const docFieldMap: Record<string, 'nin' | 'passportNumber' | 'driverLicenseNumber'> = {
+  const docFieldMap: Record<string, 'nin' | 'passportNumber' | 'driverLicenseNumber' | 'votersCardNumber'> = {
     nin: 'nin',
     passport: 'passportNumber',
     drivers_license: 'driverLicenseNumber',
+    voters_card: 'votersCardNumber',
   };
 
   // Build document rows

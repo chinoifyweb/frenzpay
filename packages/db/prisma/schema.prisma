@@ -349,6 +349,7 @@ model KycSubmission {
   passportNumber   Json?   @db.JsonB @map("passport_number")
   passportBlindIndex String? @unique @map("passport_blind_index")
   driverLicenseNumber Json? @db.JsonB @map("driver_license_number")
+  votersCardNumber    Json? @db.JsonB @map("voters_card_number")
 
   // Non-PII metadata (internal manual KYC — no Dojah)
   sourceOfFunds       String?  @map("source_of_funds")      // free text or enum: Salary, Business income, Freelance, Investment, Gift, Other

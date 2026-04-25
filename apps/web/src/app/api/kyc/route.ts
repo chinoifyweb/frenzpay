@@ -93,6 +93,7 @@ export async function GET() {
       nin: true,
       passportNumber: true,
       driverLicenseNumber: true,
+      votersCardNumber: true,
       sourceOfFunds: true,
       purposeOfAccount: true,
       employmentStatus: true,
@@ -114,7 +115,7 @@ export async function GET() {
 
     // docKind + docNumber are stored across three columns; collapse to a
     // single { docKind, docNumber } pair the form can prefill.
-    let docKind: 'nin' | 'passport' | 'drivers_license' | null = null;
+    let docKind: 'nin' | 'passport' | 'drivers_license' | 'voters_card' | null = null;
     let docNumber: string | null = null;
     if (lastRow.nin) {
       docKind = 'nin';
@@ -125,6 +126,9 @@ export async function GET() {
     } else if (lastRow.driverLicenseNumber) {
       docKind = 'drivers_license';
       docNumber = tryDecrypt(lastRow.driverLicenseNumber, ctx);
+    } else if (lastRow.votersCardNumber) {
+      docKind = 'voters_card';
+      docNumber = tryDecrypt(lastRow.votersCardNumber, ctx);
     }
 
     lastSubmission = {
