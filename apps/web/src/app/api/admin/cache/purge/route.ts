@@ -22,24 +22,42 @@ import { logger } from '@frenzpay/logger';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: Request) {
-  const { session } = await requireSession();
-  if (session.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const url = new URL(req.url);
+
+  // Two ways to authorise:
+  //   1. Admin session cookie (regular use from the dashboard).
+  //   2. ?token=<CACHE_PURGE_TOKEN> query param matching the env-var secret.
+  //      Lets the deploy script + ops scripts flush the edge cache without
+  //      needing to mint an admin session. Token is required to be non-empty.
+  let actor: string;
+  const token = url.searchParams.get('token');
+  const expected = process.env['CACHE_PURGE_TOKEN'];
+  if (token && expected && token.length > 0 && token === expected) {
+    actor = 'system:purge-token';
+  } else {
+    const { session } = await requireSession();
+    if (session.role !== 'admin') {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    actor = session.userId;
   }
 
   // Optional `?scope=/some/path` query param. Defaults to "*" (whole vhost).
-  const url = new URL(req.url);
   const scope = url.searchParams.get('scope') || '*';
 
   try {
-    await prisma.adminAuditLog.create({
-      data: {
-        adminId: session.userId,
-        action: 'LSCACHE_PURGED',
-        resourceType: 'Cache',
-        metadata: { scope },
-      },
-    });
+    // Audit log only when an admin user actually drove this. The token path
+    // is internal/automation and we don't have a userId to attribute it to.
+    if (actor !== 'system:purge-token') {
+      await prisma.adminAuditLog.create({
+        data: {
+          adminId: actor,
+          action: 'LSCACHE_PURGED',
+          resourceType: 'Cache',
+          metadata: { scope },
+        },
+      });
+    }
   } catch (err) {
     // Audit failure is non-fatal — we still want the purge to fire.
     logger.warn(
@@ -48,7 +66,7 @@ export async function POST(req: Request) {
     );
   }
 
-  logger.info({ adminId: session.userId, scope }, 'lscache purge issued');
+  logger.info({ actor, scope }, 'lscache purge issued');
 
   return new NextResponse(JSON.stringify({ ok: true, scope }), {
     status: 200,
