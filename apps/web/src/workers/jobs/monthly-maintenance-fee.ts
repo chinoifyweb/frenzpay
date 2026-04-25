@@ -74,7 +74,7 @@ export async function monthlyMaintenanceFee(): Promise<void> {
     if (feeCents <= 0) {
       logger.info(
         { feeCents },
-        'monthlyMaintenanceFeeUsdCents is 0 \u2014 job disabled, no-op',
+        'monthlyMaintenanceFeeUsdCents is 0 — job disabled, no-op',
       );
       return;
     }
@@ -88,7 +88,7 @@ export async function monthlyMaintenanceFee(): Promise<void> {
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : err },
-        'fees_usd system account missing \u2014 aborting run',
+        'fees_usd system account missing — aborting run',
       );
       return;
     }

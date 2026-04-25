@@ -74,10 +74,10 @@ const features = [
 ];
 
 const steps = [
-  { step: "01", title: "Create your account",   description: "Sign up in under 2 minutes \u2014 email + phone, no app required." },
+  { step: "01", title: "Create your account",   description: "Sign up in under 2 minutes — email + phone, no app required." },
   { step: "02", title: "Verify Your Identity",  description: "Complete KYC with a valid ID and selfie. Most approvals within 24 hours." },
   { step: "03", title: "Get Your Accounts",     description: "Receive virtual USD and EUR accounts with unique banking details ready to share." },
-  { step: "04", title: "Receive & Withdraw",    description: "Share details with payers, receive money, then withdraw in USDC or Naira \u2014 your choice." },
+  { step: "04", title: "Receive & Withdraw",    description: "Share details with payers, receive money, then withdraw in USDC or Naira — your choice." },
 ];
 
 const stats = [

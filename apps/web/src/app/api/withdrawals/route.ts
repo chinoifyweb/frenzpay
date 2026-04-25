@@ -267,8 +267,8 @@ export async function POST(req: NextRequest) {
   }
 
   // sourceAmountCents = USD cents. Convert to NGN kobo (100 kobo = 1 NGN).
-  // USD cents \u00d7 rate \u2192 NGN "cents equivalent": $1 (100 cents) at rate 1500 =
-  // 1500 NGN = 150000 kobo. So kobo = cents \u00d7 rate (the 100s cancel).
+  // USD cents × rate → NGN "cents equivalent": $1 (100 cents) at rate 1500 =
+  // 1500 NGN = 150000 kobo. So kobo = cents × rate (the 100s cancel).
   const destAmountKobo = Math.floor(
     parsed.data.sourceAmountCents * effectiveRate,
   );

@@ -69,13 +69,13 @@ const SETTING_SCHEMAS = {
   fxMarkupBps: {
     schema: z.number().int().min(0).max(1000),
     description:
-      'FX markup in basis points (100 = 1%) applied to the USD\u2192NGN mid-market rate. Ignored when fxManualRateUsdNgn is set > 0.',
+      'FX markup in basis points (100 = 1%) applied to the USD→NGN mid-market rate. Ignored when fxManualRateUsdNgn is set > 0.',
     default: 50,
   },
   fxManualRateUsdNgn: {
     schema: z.number().min(0).max(100_000),
     description:
-      'Manual USD\u2192NGN rate override. 0 = fetch Graph live rate + apply fxMarkupBps. Any positive value bypasses Graph and uses this rate as the effective rate (no markup added on top).',
+      'Manual USD→NGN rate override. 0 = fetch Graph live rate + apply fxMarkupBps. Any positive value bypasses Graph and uses this rate as the effective rate (no markup added on top).',
     default: 0,
   },
   minWithdrawalUsd: {
@@ -90,7 +90,7 @@ const SETTING_SCHEMAS = {
     default: 0,
   },
 
-  // Card fees \u2014 layered on top of whatever Graph charges us. We collect from
+  // Card fees — layered on top of whatever Graph charges us. We collect from
   // the customer; ops reconciles against Graph's invoice in fees_usd at end of
   // month.
   cardCreationFeeUsdCents: {

@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
   const feeConfig = await getFeeConfig();
 
   // Admin override — fxManualRateUsdNgn > 0 bypasses Graph entirely.
-  // Only applies to the USD\u2192NGN pair; other pairs still fetch Graph.
+  // Only applies to the USD→NGN pair; other pairs still fetch Graph.
   const manualRate = await getManualRate();
   if (manualRate > 0 && base === 'USD' && quote === 'NGN') {
     return NextResponse.json({

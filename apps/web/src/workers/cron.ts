@@ -96,7 +96,7 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 if (process.send) process.send('ready');
 
 // Keep the process alive without top-level await (which is incompatible with
-// the createRequire shim build-worker.mjs injects \u2014 Node refuses ambiguous
+// the createRequire shim build-worker.mjs injects — Node refuses ambiguous
 // ESM-with-require syntax). A non-unref'd setInterval keeps the event loop
 // open until the process is signalled. node-cron's own timers also hold it
 // open, but this is belt-and-braces.

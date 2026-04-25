@@ -556,20 +556,20 @@ async function handleCardEvent(eventId: string, payload: WebhookEnvelope) {
 }
 
 /**
- * card.transaction \u2014 fired by Graph when a virtual card is charged at a
+ * card.transaction — fired by Graph when a virtual card is charged at a
  * merchant. We respond by:
  *   1. Logging an audit event with the transaction details.
  *   2. Charging the configured per-transaction fees on top:
  *        feePctCents       = amount * cardTransactionFeePercent
  *        foreignFeeCents   = amount * cardForeignTxFeePercent  (when merchant ccy != USD)
- *      Both are debited from user.USD.AVAILABLE \u2192 fees_usd, idempotent
+ *      Both are debited from user.USD.AVAILABLE → fees_usd, idempotent
  *      per (transactionEventId).
  *   3. The actual card charge debit (the merchant amount) is handled
- *      separately by Graph's settlement to our master wallet \u2014 see the
+ *      separately by Graph's settlement to our master wallet — see the
  *      account.credit / account.debit webhook flow. The fee here is the
  *      OUR-CUT only.
  *
- * Skipped silently when both fee percentages are 0 \u2014 we still log the
+ * Skipped silently when both fee percentages are 0 — we still log the
  * underlying tx for reconciliation.
  */
 async function handleCardTransaction(eventId: string, payload: WebhookEnvelope) {
@@ -582,7 +582,7 @@ async function handleCardTransaction(eventId: string, payload: WebhookEnvelope) 
   if (!externalCardId || !amountSubunits) {
     logger.warn(
       { eventId, hasCard: !!externalCardId, amount: amountSubunits },
-      'card.transaction missing card_id or amount \u2014 logging only',
+      'card.transaction missing card_id or amount — logging only',
     );
     return;
   }
@@ -634,7 +634,7 @@ async function handleCardTransaction(eventId: string, payload: WebhookEnvelope) 
   const availableAccountId = await ensureAccount(prisma, card.userId, 'USD', 'AVAILABLE');
   const balance = await balanceOf(prisma, availableAccountId);
   if (balance < BigInt(totalFeeCents)) {
-    // Insufficient balance to cover the fee \u2014 log + skip; ops can chase.
+    // Insufficient balance to cover the fee — log + skip; ops can chase.
     // We don't go negative.
     logger.warn(
       {

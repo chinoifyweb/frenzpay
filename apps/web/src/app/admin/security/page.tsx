@@ -254,7 +254,7 @@ export default function AdminSecurityPage() {
                     <strong>1.</strong> Open your authenticator app and scan the QR code below.
                   </li>
                   <li>
-                    <strong>2.</strong> The app will show a rolling 6-digit code \u2014 type it into the
+                    <strong>2.</strong> The app will show a rolling 6-digit code — type it into the
                     verification field.
                   </li>
                   <li>

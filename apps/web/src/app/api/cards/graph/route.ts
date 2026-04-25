@@ -218,7 +218,7 @@ export async function POST(req: NextRequest) {
           createdAt: card.createdAt.toISOString(),
         },
         creationFeeCents,
-        note: 'Card is being provisioned \u2014 details (PAN/expiry) arrive after Graph confirms via webhook.',
+        note: 'Card is being provisioned — details (PAN/expiry) arrive after Graph confirms via webhook.',
       },
       { status: 201 },
     );

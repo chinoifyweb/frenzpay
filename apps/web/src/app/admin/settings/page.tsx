@@ -374,10 +374,10 @@ export default function AdminSettingsPage() {
             {/* FX rate */}
             <Card>
               <CardHeader>
-                <CardTitle>USD \u2192 NGN rate</CardTitle>
+                <CardTitle>USD → NGN rate</CardTitle>
                 <CardDescription>
                   By default we use Graph&apos;s live mid-market rate plus the markup below. Set a
-                  manual rate to override \u2014 useful when Graph&apos;s number drifts from the street rate.
+                  manual rate to override — useful when Graph&apos;s number drifts from the street rate.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -420,7 +420,7 @@ export default function AdminSettingsPage() {
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Manual rate is active: customers will see <strong>1 USD = \u20a6
+                      Manual rate is active: customers will see <strong>1 USD = ₦
                       {settings.fxManualRateUsdNgn.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                       })}</strong>. Set back to 0 to resume live Graph rates.

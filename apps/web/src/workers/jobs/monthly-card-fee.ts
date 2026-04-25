@@ -66,7 +66,7 @@ export async function monthlyCardFee(): Promise<void> {
   try {
     const feeCents = await readFeeCents();
     if (feeCents <= 0) {
-      logger.info({ feeCents }, 'cardMonthlyFeeUsdCents is 0 \u2014 job disabled, no-op');
+      logger.info({ feeCents }, 'cardMonthlyFeeUsdCents is 0 — job disabled, no-op');
       return;
     }
 
@@ -79,7 +79,7 @@ export async function monthlyCardFee(): Promise<void> {
     } catch (err) {
       logger.error(
         { err: err instanceof Error ? err.message : err },
-        'fees_usd system account missing \u2014 aborting card-fee run',
+        'fees_usd system account missing — aborting card-fee run',
       );
       return;
     }
