@@ -31,7 +31,6 @@ import {
   Shield,
   ShieldCheck,
   Upload,
-  Video,
   X,
 } from 'lucide-react'
 
@@ -47,6 +46,7 @@ import {
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { useMe } from '@/hooks/use-me'
+import { LivenessRecorder } from '@/components/kyc/liveness-recorder'
 
 // ── Field option lists (must match server-side enums in /api/kyc/t2) ────────
 
@@ -95,12 +95,10 @@ const SOURCES = [
 ] as const
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-// Liveness must be a video — a still photo doesn't prove the customer was
-// physically in front of the camera. Mirrors the server-side check in
-// /api/kyc/t2.
-const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-const MAX_LIVENESS_BYTES = 25 * 1024 * 1024
+// Liveness mime + size are enforced inside <LivenessRecorder> (which only
+// produces what MediaRecorder can output) and re-checked server-side in
+// /api/kyc/t2 — no client constants needed here.
 
 // Nigerian state 2-letter codes as expected by Graph's address object.
 const NG_STATES = [
@@ -629,14 +627,11 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
             file={selfie}
             onChange={setSelfie}
           />
-          <FileUpload
+          <LivenessRecorder
             label="Liveness video"
-            hint="Short video of yourself (3–5 s) — say your name and today’s date. Video only; photos won’t be accepted."
-            accept={VIDEO_TYPES}
-            maxBytes={MAX_LIVENESS_BYTES}
+            hint="Look into the front camera and clearly say your full name and today’s date. We record 3–5 seconds — no uploads from your gallery."
             file={liveness}
             onChange={setLiveness}
-            icon={Video}
           />
           <FileUpload
             label="Proof of address"
