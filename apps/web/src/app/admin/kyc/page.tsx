@@ -263,8 +263,26 @@ export default function KYCPage() {
       })
 
       if (!res.ok) {
+        // The route returns { error: '...' }; older code looked for
+        // `message` and fell back to "Request failed with status N",
+        // which hid the actual reason from the admin. Try both keys.
         const errBody = await res.json().catch(() => ({}))
-        throw new Error(errBody?.message ?? `Request failed with status ${res.status}`)
+        const apiMsg = errBody?.error ?? errBody?.message
+
+        // 409 specifically means the submission is no longer in a
+        // reviewable state — almost always because someone (this admin
+        // on a previous click, or a second admin) already actioned it.
+        // Don't leave the modal stuck with a stale view; close it and
+        // refresh the list so the admin sees the new status.
+        if (res.status === 409) {
+          toast.message('Already actioned', {
+            description: apiMsg ?? 'This submission was approved or rejected by another admin.',
+          })
+          closeReview()
+          fetchSubmissions()
+          return
+        }
+        throw new Error(apiMsg ?? `Request failed with status ${res.status}`)
       }
 
       toast.success(
