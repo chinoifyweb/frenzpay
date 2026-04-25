@@ -40,7 +40,7 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import { formatDate, formatDateTime } from '@/lib/utils'
+import { formatDate, formatDateTime, cn } from '@/lib/utils'
 import { REJECTION_TEMPLATES } from '@/lib/kyc-rejection-templates'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -290,8 +290,42 @@ export default function KYCPage() {
       <div>
         <h1 className="text-2xl font-bold">KYC Review Queue</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Review and action identity verification submissions across all tiers.
+          Pending submissions show by default. Use the tabs below to view approved or rejected ones.
         </p>
+      </div>
+
+      {/* Quick-filter tabs — single click to switch between Pending /
+          Approved / Rejected / All. The dropdown filter underneath
+          stays for finer combos (status × tier). Reviewers were missing
+          approved submissions because the dropdown defaulted to PENDING
+          and there was no obvious affordance to change it. */}
+      <div className="flex items-center gap-1 border-b">
+        {(
+          [
+            { value: 'PENDING', label: 'Pending' },
+            { value: 'PROCESSING', label: 'Processing' },
+            { value: 'APPROVED', label: 'Approved' },
+            { value: 'REJECTED', label: 'Rejected' },
+            { value: 'ALL', label: 'All' },
+          ] as const
+        ).map((tab) => {
+          const active = statusFilter === tab.value
+          return (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setStatusFilter(tab.value)}
+              className={cn(
+                'px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                active
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/40',
+              )}
+            >
+              {tab.label}
+            </button>
+          )
+        })}
       </div>
 
       {/* Filter Bar */}
@@ -305,7 +339,18 @@ export default function KYCPage() {
                 onValueChange={(v) => { if (v) setStatusFilter(v); }}
               >
                 <SelectTrigger className="w-[140px]">
-                  <SelectValue placeholder="Status" />
+                  <SelectValue placeholder="Status">
+                    {(v: unknown) => {
+                      const labels: Record<string, string> = {
+                        ALL: 'All Statuses',
+                        PENDING: 'Pending',
+                        PROCESSING: 'Processing',
+                        APPROVED: 'Approved',
+                        REJECTED: 'Rejected',
+                      }
+                      return labels[String(v)] ?? null
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Statuses</SelectItem>
@@ -320,7 +365,9 @@ export default function KYCPage() {
                 onValueChange={(v) => { if (v) setTierFilter(v); }}
               >
                 <SelectTrigger className="w-[110px]">
-                  <SelectValue placeholder="Tier" />
+                  <SelectValue placeholder="Tier">
+                    {(v: unknown) => v === 'ALL' ? 'All Tiers' : v === 'T1' || v === 'T2' || v === 'T3' ? String(v) : null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Tiers</SelectItem>
