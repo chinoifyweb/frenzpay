@@ -455,6 +455,33 @@ async function graphFetch<T>(opts: GraphRequestOptions): Promise<T> {
     );
   }
 
+  // Graph wraps every response in an envelope:
+  //   { "data": <actual payload>, "message": "...", "meta": ..., "status": "success" | "error" }
+  //
+  // Every typed caller (createGraphPerson, createGraphBankAccount,
+  // createGraphDocument, …) expects the flat payload — they read
+  // `data.id` etc. — so unwrap here once instead of patching every
+  // wrapper. Also surface a status:'error' returned with HTTP 200,
+  // which Graph occasionally does.
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    'data' in parsed &&
+    'status' in parsed &&
+    typeof (parsed as { status: unknown }).status === 'string'
+  ) {
+    const env = parsed as { data: unknown; status: string; message?: string };
+    if (env.status === 'error') {
+      const msg = env.message ?? 'unknown error';
+      throw new Error(
+        `Graph ${opts.method ?? 'GET'} ${opts.path} failed: ${msg}`,
+      );
+    }
+    if (env.data !== null && env.data !== undefined) {
+      return env.data as T;
+    }
+  }
+
   return (parsed as T) ?? ({} as T);
 }
 
