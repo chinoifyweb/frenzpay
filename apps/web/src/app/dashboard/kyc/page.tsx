@@ -182,7 +182,16 @@ export default function KycPage() {
 
   useEffect(() => {
     if (meLoading) { setState('loading'); return }
-    if (!me) { setState('loading'); return }
+    // /api/auth/me can return 401 even when the cookie passes middleware
+    // (cookie valid but Redis session expired). useMe sets `me` to null
+    // and `loading` to false in that case. Send the user to /login
+    // instead of leaving the page stuck on a Skeleton forever.
+    if (!me) {
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname)
+      }
+      return
+    }
     const tier = me.kycTier
     const status = me.kycStatus
     if (tier === 'T2' || tier === 'T3') {

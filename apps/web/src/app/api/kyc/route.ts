@@ -161,6 +161,19 @@ export async function GET() {
     };
   }
 
+  // KYC_TIER_LIMITS values are BigInts (cents fit comfortably in 64-bit
+  // signed but JSON can't serialise BigInt natively). Stringify each
+  // field so the JSON response doesn't throw — the dashboard reads
+  // them as strings and parses on display anyway.
+  const rawLimits = KYC_TIER_LIMITS[tier];
+  const limits = {
+    depositDailyCents: rawLimits.depositDailyCents.toString(),
+    withdrawDailyCents: rawLimits.withdrawDailyCents.toString(),
+    balanceCapCents: rawLimits.balanceCapCents.toString(),
+    p2pSendDailyCents: rawLimits.p2pSendDailyCents.toString(),
+    p2pReceiveDailyCents: rawLimits.p2pReceiveDailyCents.toString(),
+  };
+
   return NextResponse.json({
     tier,
     kycStatus: user.kycStatus,
@@ -175,6 +188,6 @@ export async function GET() {
         }
       : null,
     lastSubmission,
-    limits: KYC_TIER_LIMITS[tier],
+    limits,
   });
 }
