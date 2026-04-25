@@ -7,7 +7,12 @@
  * - Serve /offline as a fallback for navigation requests when the network fails.
  */
 
-const VERSION = 'v1';
+// IMPORTANT: bump VERSION any time we ship a deploy that needs to flush
+// browser-side state (HTML cache regression, broken chunks, etc). The
+// `activate` handler clears all caches AND broadcasts a reload signal
+// so open tabs flush stale HTML their browser may have disk-cached
+// from a prior bad cache-control response.
+const VERSION = 'v2';
 const STATIC_CACHE = `frenzpay-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
 
@@ -29,6 +34,13 @@ self.addEventListener('activate', (event) => {
       const keys = await caches.keys();
       await Promise.all(keys.filter((k) => k !== STATIC_CACHE).map((k) => caches.delete(k)));
       await self.clients.claim();
+      // Tell every open tab to do a hard reload so any HTML it has in
+      // the browser disk cache (from a prior bad-cache-control
+      // response) is flushed and replaced with a fresh fetch.
+      const clients = await self.clients.matchAll({ type: 'window' });
+      for (const client of clients) {
+        try { client.postMessage({ type: 'sw-version-changed', version: VERSION }); } catch { /* swallow */ }
+      }
     })(),
   );
 });
