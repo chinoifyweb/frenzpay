@@ -3,26 +3,33 @@
 /**
  * /admin/account-requests
  *
- * Queue of customer virtual-account applications. Admin clicks a row,
- * reviews the customer + the step-2 wizard answers, then approves or
- * rejects. Approval calls /api/admin/account-requests/[id] PATCH which
- * runs the actual Bridge / Graph provisioning and emails the customer.
+ * Queue of customer virtual-account applications, organised as three
+ * side-by-side currency columns (USD / EUR / NGN) so reviewers don't
+ * need to flip a dropdown to see what's pending per rail. If 200
+ * customers apply at once, the column headers + counts show that
+ * spread instantly and the cards inside each column give 1-click
+ * triage.
  *
- * Same shape as /admin/kyc — Status + Currency filters, paginated
- * table, click-through dialog with the approve/reject buttons.
+ * Provisioning: every approval here triggers Graph provisioning (we
+ * dropped the Bridge rail; Graph is the only virtual-account
+ * provider now) + an email to the customer from accounts@.
+ *
+ * Status filter still exists at the top so reviewers can flip
+ * between PENDING / APPROVED / REJECTED queues — but currency is
+ * handled visually rather than via a select.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { CheckCircle2, ChevronLeft, ChevronRight, Clock, Loader2, RefreshCw, XCircle } from 'lucide-react'
+import {
+  CheckCircle2, ChevronRight, Clock, FileText, Globe, Loader2, MapPin,
+  RefreshCw, User as UserIcon, Wallet, XCircle,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -51,21 +58,11 @@ interface AccountRequest {
   }
 }
 
-interface Pagination { page: number; limit: number; total: number; pages: number }
-
-const PAGE_LIMIT = 20
-
-const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  PENDING: 'outline',
-  APPROVED: 'default',
-  REJECTED: 'destructive',
-}
-
 const INFLOW_LABEL: Record<string, string> = {
-  '50000': 'Up to $500 / mo',
-  '500000': '$500–$5k / mo',
-  '1000000': '$5k–$10k / mo',
-  '1000001': 'Above $10k / mo',
+  '50000': 'Up to $500/mo',
+  '500000': '$500–$5k/mo',
+  '1000000': '$5k–$10k/mo',
+  '1000001': 'Above $10k/mo',
 }
 
 function fmtInflow(cents: string | null): string {
@@ -73,42 +70,77 @@ function fmtInflow(cents: string | null): string {
   return INFLOW_LABEL[cents] ?? `$${(parseInt(cents, 10) / 100).toLocaleString()}`
 }
 
+const CURRENCIES = [
+  {
+    code: 'USD' as const,
+    label: 'US Dollar',
+    flag: '🇺🇸',
+    accent: 'border-emerald-200 dark:border-emerald-900',
+    headerTone: 'bg-emerald-50/70 dark:bg-emerald-950/20',
+    pillTone: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300',
+  },
+  {
+    code: 'EUR' as const,
+    label: 'Euro',
+    flag: '🇪🇺',
+    accent: 'border-sky-200 dark:border-sky-900',
+    headerTone: 'bg-sky-50/70 dark:bg-sky-950/20',
+    pillTone: 'bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300',
+  },
+  {
+    code: 'NGN' as const,
+    label: 'Nigerian Naira',
+    flag: '🇳🇬',
+    accent: 'border-green-200 dark:border-green-900',
+    headerTone: 'bg-green-50/70 dark:bg-green-950/20',
+    pillTone: 'bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300',
+  },
+]
+
+const STATUS_VARIANT: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  PENDING: 'outline',
+  APPROVED: 'default',
+  REJECTED: 'destructive',
+}
+
 export default function AdminAccountRequestsPage() {
   const [rows, setRows] = useState<AccountRequest[]>([])
-  const [pagination, setPagination] = useState<Pagination | null>(null)
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('PENDING')
-  const [currencyFilter, setCurrencyFilter] = useState('ALL')
-  const [page, setPage] = useState(1)
 
   const [selected, setSelected] = useState<AccountRequest | null>(null)
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
 
+  // Pull a generous page from the API (capped at 50 server-side) and
+  // then split into columns client-side. For more than 50 we'd add
+  // per-column pagination, but that's a future problem.
   const fetchList = useCallback(async () => {
     setLoading(true)
     try {
-      const params = new URLSearchParams({
-        page: String(page),
-        limit: String(PAGE_LIMIT),
-        status: statusFilter,
-      })
-      if (currencyFilter !== 'ALL') params.set('currency', currencyFilter)
+      const params = new URLSearchParams({ status: statusFilter, limit: '50' })
       const res = await fetch(`/api/admin/account-requests?${params}`, { cache: 'no-store' })
       if (!res.ok) throw new Error(`Failed (${res.status})`)
       const json = await res.json()
       setRows(json.requests)
-      setPagination(json.pagination)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load')
-    } finally {
-      setLoading(false)
-    }
-  }, [page, statusFilter, currencyFilter])
+    } finally { setLoading(false) }
+  }, [statusFilter])
 
   useEffect(() => { fetchList() }, [fetchList])
-  useEffect(() => { setPage(1) }, [statusFilter, currencyFilter])
+
+  // Group by currency once so each column gets a sorted slice.
+  const byCurrency = useMemo(() => {
+    const m: Record<'USD' | 'EUR' | 'NGN', AccountRequest[]> = { USD: [], EUR: [], NGN: [] }
+    for (const r of rows) m[r.currency]?.push(r)
+    // Newest first inside each column
+    for (const k of Object.keys(m) as Array<'USD' | 'EUR' | 'NGN'>) {
+      m[k].sort((a, b) => +new Date(b.submittedAt) - +new Date(a.submittedAt))
+    }
+    return m
+  }, [rows])
 
   function close() {
     setSelected(null)
@@ -143,22 +175,24 @@ export default function AdminAccountRequestsPage() {
     }
   }
 
+  const totalForStatus = rows.length
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Virtual account requests</h1>
         <p className="text-muted-foreground text-sm">
-          Customer applications for USD, EUR, and NGN virtual accounts. Approval triggers Bridge / Graph provisioning + emails the customer from accounts@.
+          Customer applications for USD, EUR, and NGN virtual accounts. Approval triggers Graph provisioning and emails the customer from accounts@frenzpay.co.
         </p>
       </div>
 
-      {/* Filters */}
+      {/* Status switcher + refresh */}
       <Card>
-        <CardContent className="flex flex-wrap items-end gap-3 p-4">
-          <div className="space-y-1">
-            <Label className="text-xs">Status</Label>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4">
+          <div className="flex items-center gap-3">
+            <Label className="text-xs font-medium">Status</Label>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-9 w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-9 w-[160px]"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="PENDING">Pending</SelectItem>
                 <SelectItem value="APPROVED">Approved</SelectItem>
@@ -166,18 +200,9 @@ export default function AdminAccountRequestsPage() {
                 <SelectItem value="ALL">All</SelectItem>
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Currency</Label>
-            <Select value={currencyFilter} onValueChange={setCurrencyFilter}>
-              <SelectTrigger className="h-9 w-[120px]"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All</SelectItem>
-                <SelectItem value="USD">USD</SelectItem>
-                <SelectItem value="EUR">EUR</SelectItem>
-                <SelectItem value="NGN">NGN</SelectItem>
-              </SelectContent>
-            </Select>
+            <span className="text-xs text-muted-foreground">
+              {loading ? 'Loading…' : `${totalForStatus} total`}
+            </span>
           </div>
           <Button variant="outline" size="sm" onClick={fetchList} disabled={loading}>
             <RefreshCw className={`size-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
@@ -186,71 +211,107 @@ export default function AdminAccountRequestsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Customer</TableHead>
-                <TableHead>Currency</TableHead>
-                <TableHead>Purpose</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead>Inflow band</TableHead>
-                <TableHead>Submitted</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow><TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground"><Loader2 className="inline size-4 animate-spin mr-2" />Loading…</TableCell></TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow><TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">No requests for this filter.</TableCell></TableRow>
-              ) : rows.map((r) => (
-                <TableRow key={r.id} className="cursor-pointer hover:bg-muted/40" onClick={() => setSelected(r)}>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="text-sm font-medium">{r.user.displayName}</span>
-                      <span className="text-xs text-muted-foreground">{r.user.email} · {r.user.kycTier}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell><Badge variant="secondary">{r.currency}</Badge></TableCell>
-                  <TableCell className="text-sm">{r.purpose ?? '—'}</TableCell>
-                  <TableCell className="text-sm">{r.sourceOfFunds ?? '—'}</TableCell>
-                  <TableCell className="text-sm">{fmtInflow(r.expectedMonthlyInflowCents)}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(r.submittedAt).toLocaleString()}</TableCell>
-                  <TableCell><Badge variant={STATUS_VARIANT[r.status]}>{r.status}</Badge></TableCell>
-                  <TableCell><Button size="sm" variant="ghost">Review</Button></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      {/* Three-column queue: USD, EUR, NGN */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {CURRENCIES.map((cur) => {
+          const list = byCurrency[cur.code]
+          return (
+            <div key={cur.code} className={`rounded-2xl border ${cur.accent} bg-card flex flex-col min-h-[280px]`}>
+              {/* Column header */}
+              <div className={`flex items-center justify-between gap-2 rounded-t-2xl px-4 py-3 border-b ${cur.accent} ${cur.headerTone}`}>
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xl leading-none">{cur.flag}</span>
+                  <div>
+                    <p className="font-semibold text-sm leading-tight">{cur.code}</p>
+                    <p className="text-[11px] text-muted-foreground leading-tight">{cur.label}</p>
+                  </div>
+                </div>
+                <span className={`inline-flex items-center justify-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${cur.pillTone}`}>
+                  {list.length}
+                </span>
+              </div>
 
-          {pagination && pagination.pages > 1 && (
-            <div className="flex items-center justify-between border-t p-3 text-sm">
-              <span className="text-xs text-muted-foreground">
-                Page {pagination.page} of {pagination.pages} · {pagination.total} total
-              </span>
-              <div className="flex gap-1">
-                <Button variant="outline" size="sm" disabled={pagination.page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
-                  <ChevronLeft className="size-4" />
-                </Button>
-                <Button variant="outline" size="sm" disabled={pagination.page >= pagination.pages || loading} onClick={() => setPage((p) => p + 1)}>
-                  <ChevronRight className="size-4" />
-                </Button>
+              {/* Card stack */}
+              <div className="flex-1 p-3 space-y-2.5">
+                {loading ? (
+                  <div className="py-10 text-center text-xs text-muted-foreground">
+                    <Loader2 className="inline size-4 animate-spin mr-1.5" />Loading…
+                  </div>
+                ) : list.length === 0 ? (
+                  <div className="py-10 text-center text-xs text-muted-foreground">
+                    No {statusFilter.toLowerCase()} {cur.code} requests.
+                  </div>
+                ) : (
+                  list.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => setSelected(r)}
+                      className="w-full text-left rounded-lg border bg-background p-3 hover:border-primary hover:shadow-sm transition-all"
+                    >
+                      {/* Top row: name + status pill */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
+                            {initials(r.user.displayName)}
+                          </span>
+                          <p className="font-medium text-sm truncate">{r.user.displayName}</p>
+                        </div>
+                        <Badge variant={STATUS_VARIANT[r.status]} className="shrink-0 text-[10px]">
+                          {r.status}
+                        </Badge>
+                      </div>
+
+                      {/* Email */}
+                      <p className="mt-1 text-[11px] text-muted-foreground truncate">{r.user.email}</p>
+
+                      {/* Meta row: tier · country · inflow band */}
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        <span className="rounded-md bg-muted/50 px-1.5 py-0.5 font-mono">{r.user.kycTier}</span>
+                        {r.user.country && (
+                          <span className="inline-flex items-center gap-0.5 rounded-md bg-muted/50 px-1.5 py-0.5">
+                            <MapPin className="size-2.5" />
+                            {r.user.country}
+                          </span>
+                        )}
+                        {r.expectedMonthlyInflowCents && (
+                          <span className="inline-flex items-center gap-0.5 rounded-md bg-muted/50 px-1.5 py-0.5">
+                            <Wallet className="size-2.5" />
+                            {fmtInflow(r.expectedMonthlyInflowCents)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Purpose / source on a single dimmed line */}
+                      {(r.purpose || r.sourceOfFunds) && (
+                        <p className="mt-1.5 text-[11px] text-muted-foreground truncate">
+                          {[r.purpose, r.sourceOfFunds].filter(Boolean).join(' · ')}
+                        </p>
+                      )}
+
+                      {/* Footer: submitted time + chevron */}
+                      <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
+                        <span>{relativeTime(r.submittedAt)}</span>
+                        <ChevronRight className="size-3" />
+                      </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          )
+        })}
+      </div>
 
-      {/* Review dialog */}
+      {/* Review dialog (unchanged) */}
       <Dialog open={!!selected} onOpenChange={(open) => { if (!open) close() }}>
         <DialogContent className="max-w-lg">
           {selected && (
             <>
               <DialogHeader>
-                <DialogTitle>Review {selected.currency} application</DialogTitle>
+                <DialogTitle className="flex items-center gap-2">
+                  Review {selected.currency} application
+                  <Badge variant="secondary">{selected.currency}</Badge>
+                </DialogTitle>
                 <DialogDescription>
                   {selected.user.displayName} · {selected.user.email}
                 </DialogDescription>
@@ -258,30 +319,12 @@ export default function AdminAccountRequestsPage() {
 
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs text-muted-foreground">KYC tier</p>
-                    <p className="font-medium">{selected.user.kycTier}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Country</p>
-                    <p className="font-medium">{selected.user.country ?? '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Source of funds</p>
-                    <p className="font-medium">{selected.sourceOfFunds ?? '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Purpose</p>
-                    <p className="font-medium">{selected.purpose ?? '—'}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Expected inflow</p>
-                    <p className="font-medium">{fmtInflow(selected.expectedMonthlyInflowCents)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Submitted</p>
-                    <p className="font-medium">{new Date(selected.submittedAt).toLocaleString()}</p>
-                  </div>
+                  <Field label="KYC tier" value={selected.user.kycTier} icon={<UserIcon className="size-3" />} />
+                  <Field label="Country" value={selected.user.country ?? '—'} icon={<Globe className="size-3" />} />
+                  <Field label="Source of funds" value={selected.sourceOfFunds ?? '—'} />
+                  <Field label="Purpose" value={selected.purpose ?? '—'} />
+                  <Field label="Expected inflow" value={fmtInflow(selected.expectedMonthlyInflowCents)} icon={<Wallet className="size-3" />} />
+                  <Field label="Submitted" value={new Date(selected.submittedAt).toLocaleString()} icon={<Clock className="size-3" />} />
                 </div>
 
                 {selected.status === 'APPROVED' && selected.externalAccountId && (
@@ -349,4 +392,38 @@ export default function AdminAccountRequestsPage() {
       </Dialog>
     </div>
   )
+}
+
+// ── presentational helpers ──────────────────────────────────────────────────
+
+function Field({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
+  return (
+    <div className="rounded-md border bg-muted/30 px-3 py-2">
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground inline-flex items-center gap-1">
+        {icon}{label}
+      </p>
+      <p className="mt-0.5 font-medium text-sm">{value}</p>
+    </div>
+  )
+}
+
+/** Build short initials for the avatar bubble. "Adebayo Okafor" → "AO" */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  if (parts.length === 0) return '?'
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
+}
+
+/** Cheap relative time without date-fns. Good enough for "5 min ago". */
+function relativeTime(iso: string): string {
+  const ms = Date.now() - +new Date(iso)
+  const m = Math.floor(ms / 60_000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  if (d < 7) return `${d}d ago`
+  return new Date(iso).toLocaleDateString()
 }
