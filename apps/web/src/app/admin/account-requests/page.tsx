@@ -29,6 +29,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -55,6 +56,10 @@ interface AccountRequest {
     displayName: string
     kycTier: string
     country: string | null
+    /** True if User.dob is set. False = Graph provisioning will fail
+     *  with "Missing fields required by Graph: dob" until the admin
+     *  backfills it via the inline DOB form. */
+    hasDob: boolean
   }
 }
 

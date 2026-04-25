@@ -61,6 +61,12 @@ export async function GET(req: NextRequest) {
             lastName: true,
             kycTier: true,
             country: true,
+            // Selected just to expose `hasDob` to the admin UI — the
+            // actual ciphertext doesn't leave this server. Used to show
+            // an inline "Set DOB" form on the review modal so the
+            // admin can backfill it before approving (Graph rejects
+            // provisioning when User.dob is null).
+            dob: true,
           },
         },
       },
@@ -88,6 +94,8 @@ export async function GET(req: NextRequest) {
         displayName: `${r.user.firstName ?? ''} ${r.user.lastName ?? ''}`.trim() || r.user.email,
         kycTier: r.user.kycTier,
         country: r.user.country,
+        // Coerce to plain bool so we don't leak the ciphertext.
+        hasDob: r.user.dob !== null && r.user.dob !== undefined,
       },
     })),
     pagination: { page, limit, total, pages: Math.max(1, Math.ceil(total / limit)) },
