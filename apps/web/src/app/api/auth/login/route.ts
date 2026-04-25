@@ -24,13 +24,15 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomInt } from 'node:crypto';
 import { prisma } from '@frenzpay/db';
 import { verifyPassword } from '@frenzpay/auth';
 import { checkAuthRateLimit, rateLimitHeaders } from '@frenzpay/auth/rate-limit';
-import { createSession, sessionCookieOptions } from '@/lib/session';
+// session creation now happens in /api/auth/login/verify-otp after the
+// email OTP is confirmed — the password-only step never mints a session.
 import { redis } from '@/lib/redis';
 import { logger } from '@frenzpay/logger';
+import { sendLoginOtpEmail } from '@/lib/email';
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -223,72 +225,69 @@ export async function POST(request: NextRequest) {
 
   logger.info({ userId: user.id, email }, 'login: successful');
 
-  // 7. MFA check — require TOTP if user has active MFA secret
-  const mfaEnrolled = user.mfaSecrets.length > 0 || user.mfaRequired;
-  if (mfaEnrolled) {
-    // Issue a short-lived MFA challenge token (5 min, single-use)
-    const challengeToken = randomBytes(32).toString('hex');
-    const challengeKey = `mfa_challenge:${challengeToken}`;
-    await redis.set(
-      challengeKey,
-      JSON.stringify({ userId: user.id, deviceId: device.id, ip, userAgent }),
-      'EX',
-      300, // 5 minutes
-    );
+  // 7. Email OTP step — REQUIRED on every customer sign-in.
+  //
+  // Even if the user has TOTP enrolled (rare today; was admin-only before),
+  // we still mint an email OTP. Reason: a single uniform second-factor flow
+  // is much easier to reason about for operators and for the customer; we'd
+  // rather one well-tested path than two slightly different ones. If we
+  // later add TOTP support to customer accounts, branch here on
+  // user.mfaSecrets.length to swap in the totp-verify path; for now the
+  // mfaSecrets/mfaRequired flags are read-only signal.
+  //
+  // The 6-digit code is generated server-side, hashed with SHA-256 before
+  // landing in Redis (so a Redis-only compromise can't read live codes),
+  // and bundled with everything the verify-otp route needs to mint a
+  // session: userId, deviceId, ip, userAgent.
+  //
+  // TTL: 10 minutes. Single-use enforced by deleting the Redis key on
+  // successful verify.
+  const challengeToken = randomBytes(32).toString('hex');
+  const otp = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  const otpHash = createHash('sha256').update(otp).digest('hex');
+  const challengeKey = `login_otp:${challengeToken}`;
 
-    return NextResponse.json({
-      mfaRequired: true,
-      challengeToken,
-    });
-  }
-
-  // 8. Create session
-  // Customer login never grants admin role. Admin access goes through
-  // /admin-login which checks the admin_users table and issues an admin
-  // session separately.
-  const sessionRole = 'user';
-
-  const cookieValue = await createSession({
-    userId: user.id,
-    email: user.email,
-    role: sessionRole,
-    kycTier: tierToNumber(user.kycTier),
-    deviceId: device.id,
-    ipAddress: ip,
-    userAgent,
-    mfaVerified: false,
-  });
-
-  // Also persist session record in DB for audit trail
-  await prisma.session.create({
-    data: {
+  await redis.set(
+    challengeKey,
+    JSON.stringify({
       userId: user.id,
-      token: createHash('sha256').update(cookieValue).digest('hex'),
+      otpHash,
       deviceId: device.id,
-      ipAddress: ip,
+      ip,
       userAgent,
-      expiresAt: new Date(Date.now() + 12 * 3600 * 1000),
-    },
-  }).catch(() => null); // non-fatal — Redis is source of truth
-
-  const response = NextResponse.json({
-    user: {
-      id: user.id,
-      email: user.email,
-      displayName: user.displayName ?? `${user.firstName} ${user.lastName}`,
-      kycTier: user.kycTier,
-      emailVerified: user.emailVerified,
-    },
-  });
-
-  response.cookies.set(
-    sessionCookieOptions(cookieValue, 12 * 3600),
+      attempts: 0,
+    }),
+    'EX',
+    600, // 10 minutes
   );
 
-  return response;
+  // Send the email out-of-band — don't fail the request if SMTP is slow.
+  // Resend has a 3-5s ceiling so this is mostly insurance against transient
+  // network blips; the user-visible "Code sent" message lands either way.
+  void sendLoginOtpEmail(user.email, user.firstName ?? user.email, otp, { ip, userAgent }).catch(
+    (err) => logger.warn(
+      { userId: user.id, err: err instanceof Error ? err.message : err },
+      'login OTP email failed',
+    ),
+  );
+
+  logger.info({ userId: user.id, email }, 'login: password ok, OTP issued');
+
+  return NextResponse.json({
+    requiresOtp: true,
+    challengeToken,
+    // Mask the email so the UI can show "...@gmail.com" without the user
+    // having to remember which address they used.
+    emailHint: maskEmail(user.email),
+    // 10 minutes from now, so the UI can show a countdown if it wants.
+    expiresAt: new Date(Date.now() + 600_000).toISOString(),
+  });
 }
 
-function tierToNumber(tier: string): number {
-  const map: Record<string, number> = { T0: 0, T1: 1, T2: 2, T3: 3 };
-  return map[tier] ?? 0;
+/** "alice@gmail.com" → "a***e@gmail.com" — enough to recognise, not enough to leak. */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split('@');
+  if (!local || !domain) return email;
+  if (local.length <= 2) return `${local[0]}***@${domain}`;
+  return `${local[0]}${'*'.repeat(Math.min(3, local.length - 2))}${local[local.length - 1]}@${domain}`;
 }

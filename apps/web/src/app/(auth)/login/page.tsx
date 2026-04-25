@@ -1,12 +1,28 @@
 'use client'
 
-import { useState, Suspense } from 'react'
+/**
+ * /login — customer sign-in.
+ *
+ * Two-step flow:
+ *   1. Email + password → POST /api/auth/login
+ *      Server validates, mints a `challengeToken`, emails a 6-digit OTP,
+ *      and responds { requiresOtp: true, challengeToken, emailHint, expiresAt }.
+ *      No session is set yet.
+ *   2. OTP → POST /api/auth/login/verify-otp { challengeToken, code }
+ *      Server verifies the code against the Redis-stored hash, mints
+ *      session cookie, returns user.
+ *
+ * Resend: POST /api/auth/login/resend-otp { challengeToken } — capped
+ * at 3 per challenge window.
+ */
+
+import { useState, Suspense, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react'
+import { Eye, EyeOff, Loader2, Mail, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -41,11 +57,23 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  // MFA state
-  const [mfaRequired, setMfaRequired] = useState(false)
+  // ── OTP step state ────────────────────────────────────────────────────────
+  const [otpStep, setOtpStep] = useState(false)
   const [challengeToken, setChallengeToken] = useState('')
-  const [totpCode, setTotpCode] = useState('')
-  const [isMfaLoading, setIsMfaLoading] = useState(false)
+  const [emailHint, setEmailHint] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [secondsLeft, setSecondsLeft] = useState<number>(600) // 10 min
+
+  // Tick the countdown every second while we're on the OTP step.
+  useEffect(() => {
+    if (!otpStep) return
+    const t = setInterval(() => {
+      setSecondsLeft((s) => (s > 0 ? s - 1 : 0))
+    }, 1000)
+    return () => clearInterval(t)
+  }, [otpStep])
 
   const {
     register,
@@ -55,7 +83,7 @@ function LoginForm() {
     resolver: zodResolver(loginSchema),
   })
 
-  // ── Step 1: Password login ─────────────────────────────────────────────────
+  // ── Step 1: email + password ────────────────────────────────────────────────
 
   async function onSubmit(data: LoginFormData) {
     setIsLoading(true)
@@ -69,23 +97,21 @@ function LoginForm() {
       const json = await res.json()
 
       if (!res.ok) {
-        if (res.status === 429) {
-          toast.error(json.error || 'Too many attempts. Please try again later.')
-        } else if (res.status === 403) {
-          toast.error(json.error || 'Account restricted.')
-        } else {
-          toast.error(json.error || 'Login failed')
-        }
+        toast.error(json.error || 'Login failed')
         return
       }
 
-      // MFA required
-      if (json.mfaRequired) {
+      if (json.requiresOtp) {
         setChallengeToken(json.challengeToken)
-        setMfaRequired(true)
+        setEmailHint(json.emailHint ?? data.email)
+        setOtpStep(true)
+        setSecondsLeft(600)
+        toast.success(`Code sent to ${json.emailHint ?? data.email}`)
         return
       }
 
+      // Defensive fallback — shouldn't happen now that OTP is mandatory,
+      // but if the server ever short-circuits, just route to dashboard.
       toast.success('Welcome back!')
       router.push(redirectTo)
       router.refresh()
@@ -96,80 +122,91 @@ function LoginForm() {
     }
   }
 
-  // ── Step 2: TOTP verification ──────────────────────────────────────────────
+  // ── Step 2: verify OTP ──────────────────────────────────────────────────────
 
-  async function verifyMfa() {
-    if (totpCode.length !== 6) return
-    setIsMfaLoading(true)
+  async function verifyOtp(code: string) {
+    if (code.length !== 6) return
+    setOtpLoading(true)
     try {
-      const res = await fetch('/api/auth/mfa/totp-verify', {
+      const res = await fetch('/api/auth/login/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: totpCode,
-          challengeToken,
-          mode: 'challenge',
-        }),
+        body: JSON.stringify({ challengeToken, code }),
       })
-
       const json = await res.json()
       if (!res.ok) {
         toast.error(json.error || 'Invalid code')
-        setTotpCode('')
+        setOtpCode('')
+        if (res.status === 410) {
+          // Challenge expired — kick back to step 1.
+          setOtpStep(false)
+          setChallengeToken('')
+        }
         return
       }
-
       toast.success('Welcome back!')
       router.push(redirectTo)
       router.refresh()
     } catch {
       toast.error('Verification failed. Please try again.')
     } finally {
-      setIsMfaLoading(false)
+      setOtpLoading(false)
     }
   }
 
-  // ── Render: MFA step ───────────────────────────────────────────────────────
+  async function resendOtp() {
+    setResending(true)
+    try {
+      const res = await fetch('/api/auth/login/resend-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeToken }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error || 'Could not resend code')
+        return
+      }
+      setOtpCode('')
+      setSecondsLeft(600)
+      toast.success(
+        json.resendsRemaining === 0
+          ? 'New code sent. No more resends available.'
+          : 'New code sent.',
+      )
+    } catch {
+      toast.error('Resend failed. Try signing in again.')
+    } finally {
+      setResending(false)
+    }
+  }
 
-  if (mfaRequired) {
+  // ── Render: OTP step ───────────────────────────────────────────────────────
+
+  if (otpStep) {
+    const mins = Math.floor(secondsLeft / 60)
+    const secs = secondsLeft % 60
     return (
       <div>
         <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
-          <ShieldCheck className="size-6 text-primary" />
+          <Mail className="size-6 text-primary" />
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Two-factor authentication</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Check your email</h1>
         <p className="text-muted-foreground mt-1 mb-6">
-          Enter the 6-digit code from your authenticator app.
+          We sent a 6-digit code to <span className="font-medium text-foreground">{emailHint}</span>.
+          Enter it below to finish signing in.
         </p>
 
-        <div className="flex justify-center mb-6">
+        <div className="flex justify-center mb-4">
           <InputOTP
             maxLength={6}
-            value={totpCode}
+            value={otpCode}
             onChange={(v) => {
-              setTotpCode(v)
-              // Auto-submit when all 6 digits entered
+              setOtpCode(v)
               if (v.length === 6) {
-                setTimeout(() => {
-                  void (async () => {
-                    setIsMfaLoading(true)
-                    const res = await fetch('/api/auth/mfa/totp-verify', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ token: v, challengeToken, mode: 'challenge' }),
-                    })
-                    const json = await res.json()
-                    setIsMfaLoading(false)
-                    if (!res.ok) {
-                      toast.error(json.error || 'Invalid code')
-                      setTotpCode('')
-                      return
-                    }
-                    toast.success('Welcome back!')
-                    router.push(redirectTo)
-                    router.refresh()
-                  })()
-                }, 100)
+                // Auto-submit a moment after the last digit so the user
+                // sees it land in the box before the spinner kicks in.
+                setTimeout(() => { void verifyOtp(v) }, 80)
               }
             }}
           >
@@ -184,33 +221,52 @@ function LoginForm() {
           </InputOTP>
         </div>
 
+        <p className="mb-4 text-center text-xs text-muted-foreground">
+          {secondsLeft > 0
+            ? `Code expires in ${mins}:${String(secs).padStart(2, '0')}`
+            : 'Code expired — request a new one.'}
+        </p>
+
         <Button
           className="w-full h-10"
-          onClick={verifyMfa}
-          disabled={totpCode.length !== 6 || isMfaLoading}
+          onClick={() => void verifyOtp(otpCode)}
+          disabled={otpCode.length !== 6 || otpLoading}
         >
-          {isMfaLoading && <Loader2 className="size-4 animate-spin mr-2" />}
-          Verify
+          {otpLoading && <Loader2 className="size-4 animate-spin mr-2" />}
+          Verify and sign in
         </Button>
 
-        <p className="mt-4 text-center text-sm text-muted-foreground">
+        <div className="mt-4 flex items-center justify-between text-sm">
           <button
             type="button"
-            className="text-primary hover:underline"
+            className="text-muted-foreground hover:text-foreground"
             onClick={() => {
-              setMfaRequired(false)
+              setOtpStep(false)
               setChallengeToken('')
-              setTotpCode('')
+              setOtpCode('')
             }}
           >
-            ← Back to login
+            ← Use a different email
           </button>
+          <button
+            type="button"
+            className="text-primary hover:underline disabled:opacity-50"
+            onClick={() => void resendOtp()}
+            disabled={resending}
+          >
+            {resending ? 'Sending…' : 'Resend code'}
+          </button>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-muted-foreground">
+          <ShieldCheck className="inline size-3 mr-1 align-text-bottom" />
+          We require this every time to keep your account safe.
         </p>
       </div>
     )
   }
 
-  // ── Render: Login form ─────────────────────────────────────────────────────
+  // ── Render: email + password ───────────────────────────────────────────────
 
   return (
     <div>
@@ -264,7 +320,7 @@ function LoginForm() {
 
         <Button type="submit" className="w-full h-10" disabled={isLoading}>
           {isLoading && <Loader2 className="size-4 animate-spin mr-2" />}
-          Log In
+          Continue
         </Button>
       </form>
 

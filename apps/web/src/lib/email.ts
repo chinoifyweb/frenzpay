@@ -163,6 +163,47 @@ export async function sendEmailVerificationOtp(email: string, name: string, otp:
   })
 }
 
+/**
+ * Login OTP — second factor on every customer sign-in.
+ * Same shape as the signup verification email but the copy is tuned for an
+ * already-registered user logging back in. Includes the requesting IP +
+ * approximate user-agent in the body so a recipient who didn't try to log in
+ * has a visible "this wasn't me" signal.
+ */
+export async function sendLoginOtpEmail(
+  email: string,
+  name: string,
+  otp: string,
+  context: { ip?: string; userAgent?: string } = {},
+) {
+  const ipLine = context.ip ? `<p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">Request from IP: <span style="font-family: monospace;">${context.ip}</span></p>` : '';
+  const uaLine = context.userAgent ? `<p style="color: #9ca3af; font-size: 12px; margin: 4px 0;">Device: ${context.userAgent.slice(0, 80)}</p>` : '';
+  return resend.emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    subject: `Your Frenz Pay sign-in code: ${otp}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Confirm it&apos;s you</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name || 'there'},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Use the code below to finish signing in to Frenz Pay.</p>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 24px; margin: 24px 0; text-align: center;">
+          <p style="margin: 0 0 8px; color: #6b7280; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase;">Sign-in code</p>
+          <p style="margin: 0; color: #111; font-size: 32px; font-weight: 700; letter-spacing: 0.4em; font-family: 'SF Mono', Menlo, Consolas, monospace;">${otp}</p>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">This code expires in 10 minutes. If you didn&apos;t try to sign in, ignore this email and consider changing your password.</p>
+        ${ipLine}${uaLine}
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
+      </div>
+    `,
+    text: `Your Frenz Pay sign-in code: ${otp}\n\nThis code expires in 10 minutes. If you didn't try to sign in, ignore this email and consider changing your password.${context.ip ? `\n\nRequest from IP: ${context.ip}` : ''}`,
+  })
+}
+
 export async function sendWelcomeEmail(email: string, name: string) {
   return resend.emails.send({
     from: FROM_HELLO,
