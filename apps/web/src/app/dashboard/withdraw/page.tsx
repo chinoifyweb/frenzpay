@@ -623,7 +623,6 @@ export default function WithdrawPage() {
                   setResolveError(null);
                 }}
                 onBlur={resolveAccount}
-                placeholder="0123456789"
                 className="font-mono"
                 maxLength={10}
               />

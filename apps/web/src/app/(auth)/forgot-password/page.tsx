@@ -96,7 +96,6 @@ export default function ForgotPasswordPage() {
           <Input
             id="email"
             type="email"
-            placeholder="you@example.com"
             autoComplete="email"
             aria-invalid={!!errors.email}
             {...register('email')}

@@ -319,7 +319,6 @@ function SendPageInner() {
                   id="frenz-tag"
                   type="text"
                   className="pl-9 font-mono lowercase"
-                  placeholder="janedoe"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 8))}
                   autoFocus

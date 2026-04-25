@@ -140,8 +140,7 @@ export default function AdminUsersPage() {
             <div className="space-y-1.5">
               <Label htmlFor="nu-email">Email</Label>
               <Input id="nu-email" type="email" value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="client@example.com" />
+                onChange={(e) => setNewEmail(e.target.value)} />
             </div>
             <div className="grid grid-cols-3 gap-2">
               <div className="space-y-1.5">
@@ -163,17 +162,15 @@ export default function AdminUsersPage() {
             <div className="space-y-1.5">
               <Label htmlFor="nu-phone">Phone (+country code)</Label>
               <Input id="nu-phone" value={newPhone}
-                onChange={(e) => setNewPhone(e.target.value)}
-                placeholder="+2348012345678" />
+                onChange={(e) => setNewPhone(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="nu-pw">Temporary password</Label>
               <Input id="nu-pw" type="text" value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Min 12 chars with upper/lower/digit"
                 className="font-mono" />
               <p className="text-xs text-muted-foreground">
-                Share this with the customer securely. They should change it on first login.
+                Minimum 12 characters with upper, lower, and a digit. Share with the customer securely; they should change it on first login.
               </p>
             </div>
           </div>

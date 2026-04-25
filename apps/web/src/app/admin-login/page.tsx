@@ -99,7 +99,6 @@ function AdminLoginInner() {
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@frenzpay.co"
                 autoFocus
                 required
               />

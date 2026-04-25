@@ -414,7 +414,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
               id="docNumber"
               value={docNumber}
               onChange={(e) => setDocNumber(e.target.value)}
-              placeholder={docType === 'nin' ? '12345678901' : docType === 'passport' ? 'A01234567' : 'ABC12345AB'}
               className="font-mono"
               autoComplete="off"
             />
@@ -425,7 +424,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
               id="fullLegalName"
               value={fullLegalName}
               onChange={(e) => setFullLegalName(e.target.value)}
-              placeholder="E.g. CHIOMA ADEBAYO OKAFOR"
               autoComplete="name"
             />
           </div>
@@ -437,8 +435,8 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
             id="bvn"
             value={bvn}
             onChange={(e) => setBvn(e.target.value.replace(/\D/g, '').slice(0, 11))}
-            placeholder="11 digits"
             className="font-mono"
+            maxLength={11}
             autoComplete="off"
           />
           <p className="text-xs text-muted-foreground">
@@ -489,7 +487,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
               id="addressLine1"
               value={addressLine1}
               onChange={(e) => setAddressLine1(e.target.value)}
-              placeholder="15 Awolowo Road"
               autoComplete="address-line1"
             />
           </div>
@@ -499,7 +496,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
               id="addressLine2"
               value={addressLine2}
               onChange={(e) => setAddressLine2(e.target.value)}
-              placeholder="Flat 3B"
               autoComplete="address-line2"
             />
           </div>
@@ -510,7 +506,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
                 id="city"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
-                placeholder="Ikoyi"
                 autoComplete="address-level2"
               />
             </div>
@@ -535,7 +530,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
                 id="postalCode"
                 value={postalCode}
                 onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="101241"
                 className="font-mono"
                 autoComplete="postal-code"
               />
@@ -573,7 +567,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
                 id="occupation"
                 value={occupation}
                 onChange={(e) => setOccupation(e.target.value)}
-                placeholder="Software engineer"
                 autoComplete="organization-title"
               />
             </div>
@@ -587,7 +580,6 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
               step="100"
               value={expectedMonthlyInflowUsd}
               onChange={(e) => setExpectedMonthlyInflowUsd(e.target.value)}
-              placeholder="5000"
             />
             <p className="text-xs text-muted-foreground">
               Rough estimate of funds you expect to receive per month in USD.

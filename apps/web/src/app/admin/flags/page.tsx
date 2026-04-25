@@ -255,7 +255,6 @@ export default function FlagsPage() {
                   id="note"
                   value={resolveNote}
                   onChange={(e) => setResolveNote(e.target.value)}
-                  placeholder="e.g. Verified with user by phone — legitimate business transfer"
                   rows={3}
                   disabled={resolving}
                 />

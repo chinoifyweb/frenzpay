@@ -282,7 +282,6 @@ export default function SignupPage() {
             <Input
               id="firstName"
               type="text"
-              placeholder="John"
               autoComplete="given-name"
               aria-invalid={!!errors.firstName}
               {...register('firstName')}
@@ -296,7 +295,6 @@ export default function SignupPage() {
             <Input
               id="middleName"
               type="text"
-              placeholder="Samuel"
               autoComplete="additional-name"
               aria-invalid={!!errors.middleName}
               {...register('middleName')}
@@ -310,7 +308,6 @@ export default function SignupPage() {
             <Input
               id="lastName"
               type="text"
-              placeholder="Doe"
               autoComplete="family-name"
               aria-invalid={!!errors.lastName}
               {...register('lastName')}
@@ -330,7 +327,6 @@ export default function SignupPage() {
           <Input
             id="email"
             type="email"
-            placeholder="you@example.com"
             autoComplete="email"
             aria-invalid={!!errors.email}
             {...register('email')}
@@ -346,7 +342,6 @@ export default function SignupPage() {
           <Input
             id="phone"
             type="tel"
-            placeholder="+2348012345678"
             autoComplete="tel"
             aria-invalid={!!errors.phone}
             {...register('phone')}
@@ -366,7 +361,6 @@ export default function SignupPage() {
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="12+ characters"
               autoComplete="new-password"
               aria-invalid={!!errors.password}
               {...register('password')}
@@ -417,7 +411,6 @@ export default function SignupPage() {
             <Input
               id="confirmPassword"
               type={showConfirmPassword ? 'text' : 'password'}
-              placeholder="Repeat password"
               autoComplete="new-password"
               aria-invalid={!!errors.confirmPassword}
               {...register('confirmPassword')}
@@ -453,7 +446,6 @@ export default function SignupPage() {
             <div className="mt-2">
               <Input
                 type="text"
-                placeholder="Referral code (optional)"
                 {...register('referralCode' as keyof SignupFormData)}
               />
             </div>

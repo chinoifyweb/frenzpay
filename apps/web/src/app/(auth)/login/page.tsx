@@ -223,7 +223,6 @@ function LoginForm() {
           <Input
             id="email"
             type="email"
-            placeholder="you@example.com"
             autoComplete="email"
             aria-invalid={!!errors.email}
             {...register('email')}
@@ -244,7 +243,6 @@ function LoginForm() {
             <Input
               id="password"
               type={showPassword ? 'text' : 'password'}
-              placeholder="Enter your password"
               autoComplete="current-password"
               aria-invalid={!!errors.password}
               {...register('password')}

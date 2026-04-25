@@ -448,7 +448,6 @@ export default function GraphCardsPage() {
                 id="label"
                 value={issueLabel}
                 onChange={(e) => setIssueLabel(e.target.value)}
-                placeholder="Groceries"
               />
             </div>
             <div className="space-y-1.5">

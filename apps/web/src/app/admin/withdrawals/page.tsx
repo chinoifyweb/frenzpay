@@ -589,7 +589,6 @@ export default function WithdrawalsPage() {
                 <div className="space-y-3">
                   <Label className="text-sm font-medium">Graph Payout Reference</Label>
                   <Input
-                    placeholder="e.g. graph_payout_01HXYZ..."
                     value={externalRef}
                     onChange={(e) => setExternalRef(e.target.value)}
                     className="font-mono text-xs"
