@@ -8,10 +8,11 @@
  *   { action: 'reject', rejectionReason: string, rejectionReasonCode?: string }
  *
  * On approve:
- *   - Picks the right rail (graph for NGN + USD-from-NG, bridge otherwise)
- *   - Calls the existing ensureBridgeCustomer / ensureBridgeVirtualAccount
- *     or ensureGraphBankAccount provisioner — same code that used to
- *     auto-fire on KYC approval, just now gated behind admin review
+ *   - Calls ensureGraphBankAccount() for every currency (USD/EUR/NGN) —
+ *     same code that used to auto-fire on KYC approval, just now gated
+ *     behind admin review. Bridge has been retired as an account-issuance
+ *     rail; existing Bridge-issued accounts continue to work but no new
+ *     ones are created from this endpoint.
  *   - Marks the request APPROVED with externalAccountId pointing at the
  *     freshly-issued UserExternalAccount row
  *   - Emails the customer "your X account is ready"
@@ -28,7 +29,9 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 import { logger } from '@frenzpay/logger';
-import { ensureBridgeCustomer, ensureBridgeVirtualAccount } from '@/lib/bridge-provision';
+// Bridge is no longer used for new account issuance — the approve flow
+// only calls ensureGraphBankAccount now. Keeping the bridge-provision
+// module untouched in lib/ for any legacy webhook handling.
 import { ensureGraphBankAccount } from '@/lib/graph-provision';
 import { syncUserToGraph, uploadKycDocsToGraph } from '@/lib/graph-sync';
 import {
@@ -160,69 +163,46 @@ export async function PATCH(
   // Provisioning runs OUTSIDE the DB transaction so a long external HTTP
   // call can't hold a Postgres txn open. We mark the request APPROVED only
   // after the rail call succeeds.
-  type Rail = 'bridge' | 'graph';
-  let rail: Rail;
-  if (request.currency === 'NGN') rail = 'graph';
-  else if (request.currency === 'USD' && request.user.country === 'NG') rail = 'graph';
-  else rail = 'bridge';
+  //
+  // Rail: Graph for ALL currencies. The previous Bridge branch handled
+  // EUR + non-NG USD, but the team consolidated on Graph for every
+  // virtual-account request — Bridge is no longer used for account
+  // issuance (kept only for legacy data on already-issued Bridge VAs).
+  const rail = 'graph' as const;
 
   let externalAccountId: string | null = null;
   let provisionError: string | null = null;
 
   try {
-    if (rail === 'graph') {
-      // Make sure the Graph person + KYC docs are synced. These are
-      // idempotent for repeated calls.
-      try {
-        await syncUserToGraph(request.userId);
-        await uploadKycDocsToGraph(request.userId).catch(() => null);
-      } catch (err) {
-        logger.warn(
-          { userId: request.userId, err: err instanceof Error ? err.message : err },
-          'Graph sync failed during account-request approval; continuing',
-        );
-      }
-
-      const result = await ensureGraphBankAccount(
-        request.userId,
-        request.currency as 'USD' | 'EUR' | 'NGN',
-        { triggeredBy: 'admin' },
+    // Make sure the Graph person + KYC docs are synced. These are
+    // idempotent for repeated calls.
+    try {
+      await syncUserToGraph(request.userId);
+      await uploadKycDocsToGraph(request.userId).catch(() => null);
+    } catch (err) {
+      logger.warn(
+        { userId: request.userId, err: err instanceof Error ? err.message : err },
+        'Graph sync failed during account-request approval; continuing',
       );
-      if (!result.ok) {
-        provisionError = result.error || 'Graph provisioning failed';
-      } else {
-        // ensureGraphBankAccount returns the *external* (rail-side) id;
-        // we want the DB row id so the AccountRequest links correctly.
-        const uea = await prisma.userExternalAccount.findFirst({
-          where: { userId: request.userId, externalAccountId: result.virtualAccountId ?? '' },
-          select: { id: true },
-        });
-        externalAccountId = uea?.id ?? null;
-      }
+    }
+
+    const result = await ensureGraphBankAccount(
+      request.userId,
+      request.currency as 'USD' | 'EUR' | 'NGN',
+      { triggeredBy: 'admin' },
+    );
+    if (!result.ok) {
+      provisionError = result.error || 'Graph provisioning failed';
     } else {
-      // bridge — create the customer if needed, then the virtual account
-      const customerResult = await ensureBridgeCustomer(request.userId, {
-        triggeredBy: 'admin',
-        adminId: session.userId,
+      // ensureGraphBankAccount returns the *external* (rail-side) id;
+      // we want the DB row id so the AccountRequest links correctly.
+      // userId in the where clause guards against a malformed rail-id
+      // collision matching another customer's row.
+      const uea = await prisma.userExternalAccount.findFirst({
+        where: { userId: request.userId, externalAccountId: result.virtualAccountId ?? '' },
+        select: { id: true },
       });
-      if (!customerResult.ok) {
-        provisionError = customerResult.error || 'Bridge customer creation failed';
-      } else {
-        const accountResult = await ensureBridgeVirtualAccount(
-          request.userId,
-          request.currency as 'USD' | 'EUR',
-          { triggeredBy: 'admin', adminId: session.userId },
-        );
-        if (!accountResult.ok) {
-          provisionError = accountResult.error || 'Bridge virtual account failed';
-        } else {
-          const uea = await prisma.userExternalAccount.findFirst({
-            where: { userId: request.userId, externalAccountId: accountResult.virtualAccountId ?? '' },
-            select: { id: true },
-          });
-          externalAccountId = uea?.id ?? null;
-        }
-      }
+      externalAccountId = uea?.id ?? null;
     }
   } catch (err) {
     provisionError = err instanceof Error ? err.message : String(err);

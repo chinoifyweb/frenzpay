@@ -138,13 +138,11 @@ const nextConfig: NextConfig = {
   },
 
   images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "logo.clearbit.com",
-        pathname: "/**",
-      },
-    ],
+    // The previous logo.clearbit.com entry was for the homepage platform
+    // logos. Those moved to plain <img> tags (browser-side fetch only)
+    // because Next's <Image> server-prerender path was DNS-failing on
+    // the production box and dumping ENOTFOUND traces into error.log.
+    remotePatterns: [],
   },
 
   // Experimental: server actions are stable in Next 15

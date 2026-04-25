@@ -7,27 +7,31 @@
  * which the /api/admin/flags GET endpoint joins against to decorate each
  * flag with resolution status.
  *
- * Body: { note?: string }  // optional free-text resolution note (max 1000)
+ * Body: { totpCode: string (6 digits), note: string (min 10 chars) }
+ *   - totpCode: admin's own TOTP, gated through gateAdminOp() to make
+ *     sure a hijacked admin session can't quietly clear flags.
+ *   - note: required (min 10 chars) so there's always a paper-trail
+ *     reason. Was previously optional, but flag resolution is a
+ *     compliance-sensitive action.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireSession } from '@/lib/session';
+import { requireRole } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
+import { gateAdminOp } from '@/lib/admin-mfa';
 import { logger } from '@frenzpay/logger';
 
 const Schema = z.object({
-  note: z.string().max(1000).optional(),
+  totpCode: z.string().regex(/^\d{6}$/),
+  note: z.string().min(10, 'Note must be at least 10 characters').max(1000),
 });
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { session } = await requireSession();
-  if (session.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
+  const { session } = await requireRole('admin');
 
   const { id } = await params;
 
@@ -53,6 +57,18 @@ export async function POST(
     );
   }
 
+  // TOTP gate — flag resolution is compliance-sensitive, gateAdminOp()
+  // verifies the admin's own TOTP and emits an admin_op_totp_used audit
+  // row. Without this a hijacked session could quietly clear flags.
+  const gate = await gateAdminOp({
+    adminUserId: session.userId,
+    totpCode: parsed.data.totpCode,
+    reason: parsed.data.note,
+  });
+  if (!gate.ok) {
+    return NextResponse.json({ error: gate.error }, { status: gate.status });
+  }
+
   const flag = await prisma.auditLog.findUnique({
     where: { id: flagBigInt },
     select: { id: true, action: true, userId: true },
@@ -76,7 +92,7 @@ export async function POST(
       targetUserId: flag.userId ?? null,
       metadata: {
         originalAction: flag.action,
-        note: parsed.data.note ?? null,
+        note: parsed.data.note,
       },
     },
   });

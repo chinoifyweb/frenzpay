@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
@@ -54,9 +55,13 @@ export default function FlagsPage() {
   const [flags, setFlags] = useState<Flag[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Resolve dialog state
+  // Resolve dialog state — TOTP-gated since flag resolution is
+  // compliance-sensitive (clearing a flag without a paper trail would
+  // be a hole). Both note (min 10 chars) + a fresh authenticator code
+  // are required by the server now.
   const [resolveTarget, setResolveTarget] = useState<Flag | null>(null);
   const [resolveNote, setResolveNote] = useState('');
+  const [resolveTotp, setResolveTotp] = useState('');
   const [resolving, setResolving] = useState(false);
 
   const fetchFlags = useCallback(async () => {
@@ -80,6 +85,14 @@ export default function FlagsPage() {
 
   async function resolve() {
     if (!resolveTarget) return;
+    if (resolveNote.trim().length < 10) {
+      toast.error('Note must be at least 10 characters.');
+      return;
+    }
+    if (!/^\d{6}$/.test(resolveTotp)) {
+      toast.error('Enter your 6-digit TOTP code.');
+      return;
+    }
     setResolving(true);
     try {
       const res = await fetch(
@@ -87,7 +100,10 @@ export default function FlagsPage() {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ note: resolveNote.trim() || undefined }),
+          body: JSON.stringify({
+            note: resolveNote.trim(),
+            totpCode: resolveTotp,
+          }),
         },
       );
       const json = await res.json().catch(() => ({}));
@@ -95,9 +111,11 @@ export default function FlagsPage() {
       toast.success('Flag resolved');
       setResolveTarget(null);
       setResolveNote('');
+      setResolveTotp('');
       await fetchFlags();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Resolve failed');
+      setResolveTotp(''); // TOTP rotates every 30s — clear stale entry
     } finally {
       setResolving(false);
     }
@@ -196,6 +214,7 @@ export default function FlagsPage() {
                             onClick={() => {
                               setResolveTarget(f);
                               setResolveNote('');
+                              setResolveTotp('');
                             }}
                           >
                             <Check className="h-3.5 w-3.5 mr-1" />
@@ -219,6 +238,7 @@ export default function FlagsPage() {
           if (!open) {
             setResolveTarget(null);
             setResolveNote('');
+            setResolveTotp('');
           }
         }}
       >
@@ -250,12 +270,29 @@ export default function FlagsPage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="note">Resolution note (optional)</Label>
+                <Label htmlFor="note">Resolution note (min 10 chars)</Label>
                 <Textarea
                   id="note"
                   value={resolveNote}
                   onChange={(e) => setResolveNote(e.target.value)}
                   rows={3}
+                  disabled={resolving}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Required. Briefly explain why this flag is being cleared — it&apos;s recorded in the admin audit log.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="resolve-totp">Your 6-digit TOTP code</Label>
+                <Input
+                  id="resolve-totp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={resolveTotp}
+                  onChange={(e) => setResolveTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="font-mono tracking-widest text-center"
                   disabled={resolving}
                 />
               </div>
@@ -272,7 +309,7 @@ export default function FlagsPage() {
             </Button>
             <Button
               className="bg-emerald-600 hover:bg-emerald-700 text-white"
-              disabled={resolving}
+              disabled={resolving || resolveNote.trim().length < 10 || !/^\d{6}$/.test(resolveTotp)}
               onClick={resolve}
             >
               {resolving && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}

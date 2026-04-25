@@ -323,15 +323,27 @@ export default function HomePage() {
           <div className="flex flex-wrap justify-center items-center gap-4">
             {platforms.map((p) => (
               <div key={p.name} className="flex items-center gap-2.5 rounded-xl border border-gray-150 dark:border-white/8 bg-gray-50 dark:bg-white/4 px-4 py-2.5 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all">
-                <div className="relative w-6 h-6 flex-shrink-0">
-                  <Image
+                {/* Plain <img> instead of Next.js <Image>. <Image> would
+                    server-side fetch logo.clearbit.com during prerender,
+                    flooding the error log with ENOTFOUND when the box
+                    can't reach clearbit. With <img> the browser fetches
+                    directly at view time; if clearbit is unreachable
+                    the onError hides the broken image and the
+                    platform name + first-letter fallback still shows. */}
+                <div className="relative w-6 h-6 flex-shrink-0 rounded-md bg-white/60 dark:bg-white/10 flex items-center justify-center text-[10px] font-bold text-gray-500 dark:text-gray-400">
+                  <span aria-hidden="true">{p.name.charAt(0)}</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
                     src={`https://logo.clearbit.com/${p.domain}`}
-                    alt={p.name}
+                    alt=""
                     width={24}
                     height={24}
-                    className="rounded-md object-contain"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    className="absolute inset-0 w-6 h-6 rounded-md object-contain bg-white/80"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
+                      (e.target as HTMLImageElement).style.display = 'none';
                     }}
                   />
                 </div>
