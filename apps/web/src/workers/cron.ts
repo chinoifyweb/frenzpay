@@ -95,5 +95,9 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // Signal PM2 we're ready (required because ecosystem sets wait_ready for web)
 if (process.send) process.send('ready');
 
-// Keep process alive by returning a never-resolving promise
-await new Promise(() => { /* run forever */ });
+// Keep the process alive without top-level await (which is incompatible with
+// the createRequire shim build-worker.mjs injects \u2014 Node refuses ambiguous
+// ESM-with-require syntax). A non-unref'd setInterval keeps the event loop
+// open until the process is signalled. node-cron's own timers also hold it
+// open, but this is belt-and-braces.
+setInterval(() => { /* keepalive tick */ }, 60_000);
