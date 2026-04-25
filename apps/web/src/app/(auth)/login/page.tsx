@@ -30,6 +30,20 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp'
 
+/** Inline Google "G" mark — used in the Continue-with-Google button.
+ *  Kept as a small component so it sits next to the rest of the auth
+ *  surface and we don't reach for a heavier icon library. */
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+      <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+      <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
+      <path fill="#1976D2" d="M43.611 20.083L43.595 20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002 6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z" />
+    </svg>
+  )
+}
+
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
 const loginSchema = z.object({
@@ -52,7 +66,12 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get('redirect') || '/dashboard'
+  const redirectTo = searchParams.get('redirect') || searchParams.get('next') || '/dashboard'
+  const errorParam = searchParams.get('error')
+  // /api/auth/google/callback redirects here with ?challenge=… when the
+  // user has TOTP enrolled — we short-circuit straight into the OTP step
+  // instead of asking for password.
+  const incomingChallenge = searchParams.get('challenge')
 
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -81,6 +100,40 @@ function LoginForm() {
     }, 1000)
     return () => clearInterval(t)
   }, [otpStep])
+
+  // Google OAuth → TOTP shortcut. When the callback redirects here
+  // with ?challenge= we drop straight into the TOTP step.
+  useEffect(() => {
+    if (incomingChallenge && /^[a-f0-9]{64}$/.test(incomingChallenge) && !otpStep) {
+      setMfaMethod('totp')
+      setChallengeToken(incomingChallenge)
+      setOtpStep(true)
+      setSecondsLeft(300)
+    }
+  }, [incomingChallenge, otpStep])
+
+  // Surface OAuth-callback error codes as a toast so the user
+  // understands why they were bounced back to /login.
+  useEffect(() => {
+    if (!errorParam) return
+    const labels: Record<string, string> = {
+      google_cancelled: 'Sign-in cancelled.',
+      google_account_blocked: 'Your account is blocked. Contact support.',
+      google_email_unverified: 'Verify your email at Google before signing in here.',
+      google_state_mismatch: 'Sign-in expired. Please try again.',
+      google_state_missing: 'Sign-in expired. Please try again.',
+      google_token_exchange: 'Couldn’t complete Google sign-in. Try again.',
+      google_not_configured: 'Google sign-in isn’t available right now.',
+    }
+    const msg = labels[errorParam] ?? 'Sign-in failed. Try again.'
+    toast.error(msg)
+    // Strip the error param so it doesn't re-fire on every render.
+    if (typeof window !== 'undefined') {
+      const u = new URL(window.location.href)
+      u.searchParams.delete('error')
+      window.history.replaceState(null, '', u.toString())
+    }
+  }, [errorParam])
 
   const {
     register,
@@ -300,6 +353,23 @@ function LoginForm() {
     <div>
       <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
       <p className="text-muted-foreground mt-1 mb-6">Log in to your Frenz Pay account</p>
+
+      {/* "Continue with Google" — kicks off the OAuth flow. The /start
+          route returns 503 when GOOGLE_CLIENT_ID isn't set, in which
+          case we fall through to a toast. */}
+      <a
+        href={`/api/auth/google/start?next=${encodeURIComponent(redirectTo)}`}
+        className="mb-4 inline-flex w-full items-center justify-center gap-2 rounded-md border border-input bg-background px-4 py-2.5 text-sm font-medium hover:bg-muted/40 transition-colors"
+      >
+        <GoogleIcon className="size-4" />
+        Continue with Google
+      </a>
+
+      <div className="my-4 flex items-center gap-3">
+        <div className="flex-1 border-t" />
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Or with email</span>
+        <div className="flex-1 border-t" />
+      </div>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <div className="space-y-2">

@@ -57,6 +57,12 @@ model User {
   phoneBlindIndex String? @unique @map("phone_blind_index")
 
   passwordHash  String   @map("password_hash")
+  // Google OIDC `sub` claim — stable identifier of the linked Google
+  // account. Set on first "Continue with Google" sign-in, used for
+  // subsequent matching so the user is recognised even if they
+  // change their Google email later. Unique partial index in
+  // migration 00004_user_google_sub.
+  googleSub     String?  @map("google_sub")
   status        UserStatus @default(PENDING_KYC)
   kycTier       KycTier    @default(T0) @map("kyc_tier")
   kycStatus     KycStatus  @default(NOT_STARTED) @map("kyc_status")
