@@ -59,6 +59,7 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
 
   const [stage, setStage] = useState<Stage>(file ? 'review' : 'idle')
   const [error, setError] = useState<string | null>(null)
+  const [permissionState, setPermissionState] = useState<'unknown' | 'denied'>('unknown')
   const [recordedSeconds, setRecordedSeconds] = useState(0)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [supported, setSupported] = useState<boolean>(true)
@@ -72,6 +73,24 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       typeof window.MediaRecorder !== 'undefined'
     setSupported(ok)
   }, [])
+
+  // ── Auto-prompt camera permission on first load ─────────────────────────
+  // Customers were getting stuck on a "Start camera" button + then a
+  // "permission denied" error if they tapped it after the prompt timed
+  // out. Trigger the prompt as soon as the recorder mounts so it's
+  // visually obvious what's happening — no extra step. We only do this
+  // when the customer hasn't already recorded a clip (file === null) and
+  // we haven't yet hit a permission failure.
+  useEffect(() => {
+    if (!supported) return
+    if (file) return                            // already recorded → review stage
+    if (stage !== 'idle') return                // already in flight
+    if (permissionState === 'denied') return    // user said no, don't loop
+    void startCamera()
+    // We deliberately depend on `supported` only — we want this to fire
+    // exactly once per mount, not every time `stage` ticks through.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supported])
 
   // ── Build a preview URL whenever we have a file (for the review stage) ──
   useEffect(() => {
@@ -121,18 +140,37 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       setStage('preview')
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      const name = err instanceof Error ? err.name : ''
       // Translate the most common failures into something a customer can act on.
-      if (msg.includes('NotAllowed') || /denied/i.test(msg)) {
-        setError('Camera + microphone permission denied. Allow access in your browser settings and try again.')
-      } else if (msg.includes('NotFound') || /no.*camera/i.test(msg)) {
+      if (name === 'NotAllowedError' || msg.includes('NotAllowed') || /denied|permission/i.test(msg)) {
+        // Browser said no. Could be: user tapped Block in the prompt,
+        // browser-level setting blocks camera for the site, or (Brave)
+        // Shields blocking. Mark the state so the auto-prompt useEffect
+        // doesn't spam the user, and surface a Retry button + browser-
+        // specific tip in the UI.
+        setPermissionState('denied')
+        setError('camera_denied')
+      } else if (name === 'NotFoundError' || msg.includes('NotFound') || /no.*camera/i.test(msg)) {
         setError('No camera detected on this device. Use a phone or a laptop with a webcam.')
-      } else if (msg.includes('NotReadable') || /in use/i.test(msg)) {
+      } else if (name === 'NotReadableError' || msg.includes('NotReadable') || /in use/i.test(msg)) {
         setError('Camera is already in use by another app. Close it and try again.')
       } else {
         setError(`Couldn’t start the camera: ${msg}`)
       }
       setStage('idle')
     }
+  }
+
+  /** Detect Brave so we can surface a Shields-specific tip when camera
+   *  access is blocked — Brave often quietly blocks getUserMedia even
+   *  when the prompt UI looks normal. */
+  function isBrave(): boolean {
+    if (typeof navigator === 'undefined') return false
+    // navigator.brave.isBrave() is the official check, present on
+    // recent Brave versions. We coerce to boolean for safety.
+    const nav = navigator as unknown as { brave?: { isBrave?: () => Promise<boolean> } }
+    return typeof nav.brave?.isBrave === 'function'
+      || /Brave/i.test(navigator.userAgent ?? '')
   }
 
   function startRecording() {
@@ -247,12 +285,42 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       </div>
       <p className="text-xs text-muted-foreground">{hint}</p>
 
-      {error && (
+      {/* When camera was denied we show a richer panel with a Retry
+          button + Brave-Shields tip. Other errors fall through to the
+          normal red Alert below. */}
+      {error === 'camera_denied' ? (
+        <div className="rounded-lg border border-red-300/70 bg-red-50/70 dark:border-red-900 dark:bg-red-950/20 px-4 py-3 space-y-2">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5 text-red-600" />
+            <div>
+              <p className="text-sm font-medium text-red-900 dark:text-red-200">Camera access blocked</p>
+              <p className="text-xs text-red-900/80 dark:text-red-300/90 mt-0.5 leading-relaxed">
+                Your browser blocked camera + microphone for this page. Tap the camera icon in the address bar (or open browser settings) and allow access for <span className="font-mono">frenzpay.co</span>, then retry.
+              </p>
+              {isBrave() && (
+                <p className="text-xs text-red-900/80 dark:text-red-300/90 mt-1.5 leading-relaxed">
+                  <span className="font-semibold">Brave users:</span> tap the Brave Shields icon in the address bar, choose <span className="font-medium">Shields down for this site</span>, then tap Retry.
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => { setError(null); setPermissionState('unknown'); void startCamera() }}
+            >
+              <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+              Retry camera
+            </Button>
+          </div>
+        </div>
+      ) : error ? (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )}
+      ) : null}
 
       <div className="rounded-lg border bg-black/90 overflow-hidden aspect-video relative">
         {/* Live preview — only shown while we're not in 'review' */}
@@ -283,13 +351,20 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
         {stage === 'idle' && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-white/90">
             <Camera className="h-8 w-8" />
-            <p className="text-sm">Camera off</p>
+            <p className="text-sm">
+              {permissionState === 'denied'
+                ? 'Camera blocked'
+                : 'Loading camera…'}
+            </p>
           </div>
         )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {stage === 'idle' && (
+        {/* "Start camera" button now only appears as a manual retry path
+            when the auto-prompt has been blocked. Otherwise the camera
+            comes up on its own and we go straight to 'preview'. */}
+        {stage === 'idle' && permissionState === 'denied' && (
           <Button onClick={startCamera} type="button" className="gap-2">
             <Camera className="h-4 w-4" />
             Start camera

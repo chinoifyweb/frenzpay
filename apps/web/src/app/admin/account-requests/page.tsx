@@ -182,7 +182,7 @@ export default function AdminAccountRequestsPage() {
       <div>
         <h1 className="text-2xl font-bold">Virtual account requests</h1>
         <p className="text-muted-foreground text-sm">
-          Customer applications for USD, EUR, and NGN virtual accounts. Approval triggers Graph provisioning and emails the customer from accounts@frenzpay.co.
+          Customer applications for USD, EUR, and NGN virtual accounts.
         </p>
       </div>
 
