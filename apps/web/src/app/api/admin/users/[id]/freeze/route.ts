@@ -68,12 +68,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const t = tx as any;
     await t.user.update({ where: { id }, data: { status: 'SUSPENDED' } });
-    await t.auditLog.create({
+    // adminAuditLog (not auditLog) — session.userId is an AdminUser.id and
+    // FK-fails against the customer-side audit_logs.user_id column.
+    await t.adminAuditLog.create({
       data: {
-        userId: session.userId,      // actor (admin)
+        adminId: session.userId,
         action: 'ADMIN_USER_FROZEN',
         resourceType: 'User',
         resourceId: id,
+        targetUserId: id,
         metadata: {
           targetUserEmail: target.email,
           reason: parsed.data.reason,

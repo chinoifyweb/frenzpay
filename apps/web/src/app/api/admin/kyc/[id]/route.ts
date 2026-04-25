@@ -120,17 +120,25 @@ export async function PATCH(
       });
     }
 
-    await tx.auditLog.create({
+    // adminAuditLog (not auditLog) — session.userId is an AdminUser.id and
+    // would FK-fail against the customer-side audit_logs.user_id column.
+    // The "Confirm rejection" button on /admin/kyc was 500ing on this for
+    // every reviewer; same FK pattern we fixed earlier on the KYC document
+    // viewer + admin transaction-refund routes.
+    await tx.adminAuditLog.create({
       data: {
-        userId: session.userId,
+        adminId: session.userId,
         action: action === 'approve' ? 'ADMIN_KYC_APPROVED' : 'ADMIN_KYC_REJECTED',
         resourceType: 'KycSubmission',
         resourceId: id,
+        targetUserId: submission.userId,
         metadata: {
-          submissionUserId: submission.userId,
           tier: submission.tier,
           ...(action === 'reject'
-            ? { rejectionReason: (parsed.data as any).rejectionReason }
+            ? {
+                rejectionReason: (parsed.data as { rejectionReason?: string }).rejectionReason,
+                rejectionReasonCode: (parsed.data as { rejectionReasonCode?: string }).rejectionReasonCode ?? null,
+              }
             : {}),
         },
       },
