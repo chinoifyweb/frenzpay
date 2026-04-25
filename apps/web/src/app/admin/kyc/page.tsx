@@ -41,6 +41,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatDate, formatDateTime } from '@/lib/utils'
+import { REJECTION_TEMPLATES } from '@/lib/kyc-rejection-templates'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,7 @@ export default function KYCPage() {
 
   const [selectedSubmission, setSelectedSubmission] = useState<KYCSubmission | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
+  const [rejectionReasonCode, setRejectionReasonCode] = useState<string>('')
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -223,12 +225,14 @@ export default function KYCPage() {
     setSelectedSubmission(submission)
     setShowRejectInput(false)
     setRejectionReason('')
+    setRejectionReasonCode('')
   }
 
   function closeReview() {
     setSelectedSubmission(null)
     setShowRejectInput(false)
     setRejectionReason('')
+    setRejectionReasonCode('')
   }
 
   async function handleAction(action: 'approve' | 'reject') {
@@ -240,8 +244,11 @@ export default function KYCPage() {
 
     setIsSubmitting(true)
     try {
-      const body: { action: string; rejectionReason?: string } = { action }
-      if (action === 'reject') body.rejectionReason = rejectionReason.trim()
+      const body: { action: string; rejectionReason?: string; rejectionReasonCode?: string } = { action }
+      if (action === 'reject') {
+        body.rejectionReason = rejectionReason.trim()
+        if (rejectionReasonCode) body.rejectionReasonCode = rejectionReasonCode
+      }
 
       const res = await fetch(`/api/admin/kyc/${selectedSubmission.id}`, {
         method: 'PATCH',
@@ -628,19 +635,48 @@ export default function KYCPage() {
 
               {/* Rejection input (toggled) */}
               {isPending && showRejectInput && (
-                <div className="space-y-2">
-                  <Label htmlFor="rejection-reason" className="text-sm font-medium text-destructive">
-                    Rejection Reason <span className="text-destructive">*</span>
-                  </Label>
-                  <Textarea
-                    id="rejection-reason"
-                    placeholder="Explain why this submission is being rejected..."
-                    value={rejectionReason}
-                    onChange={(e) => setRejectionReason(e.target.value)}
-                    rows={4}
-                    disabled={isSubmitting}
-                    className="resize-none"
-                  />
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-medium">Reason category</Label>
+                    <Select
+                      value={rejectionReasonCode}
+                      onValueChange={(v) => {
+                        setRejectionReasonCode(v)
+                        // Picking a template prefills the customer-facing
+                        // message; admin can still tweak before submit.
+                        // OTHER clears it so the admin writes from scratch.
+                        const tpl = REJECTION_TEMPLATES.find((t) => t.code === v)
+                        if (tpl && tpl.code !== 'OTHER') setRejectionReason(tpl.customerMessage)
+                        else if (tpl?.code === 'OTHER') setRejectionReason('')
+                      }}
+                      disabled={isSubmitting}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Pick a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {REJECTION_TEMPLATES.map((t) => (
+                          <SelectItem key={t.code} value={t.code}>{t.adminLabel}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Picking a category prefills the message and emails the customer a step-by-step &quot;what to do&quot; checklist.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="rejection-reason" className="text-sm font-medium">
+                      Customer-facing message <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="rejection-reason"
+                      value={rejectionReason}
+                      onChange={(e) => setRejectionReason(e.target.value)}
+                      rows={4}
+                      disabled={isSubmitting}
+                      className="resize-none"
+                    />
+                  </div>
                 </div>
               )}
 

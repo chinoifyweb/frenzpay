@@ -15,10 +15,20 @@ import { ensureBridgeCustomer } from '@/lib/bridge-provision';
 import { syncUserToGraph, uploadKycDocsToGraph } from '@/lib/graph-sync';
 import { logger } from '@frenzpay/logger';
 import { sendKYCApprovedEmail, sendKYCRejectedEmail } from '@/lib/email';
+import { findRejectionTemplate } from '@/lib/kyc-rejection-templates';
 
 const ReviewSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('approve') }),
-  z.object({ action: z.literal('reject'), rejectionReason: z.string().min(10, 'Please provide a reason (min 10 chars)') }),
+  z.object({
+    action: z.literal('reject'),
+    // Customer-facing message — required, min 10 chars whether the admin
+    // picked a template or wrote it freeform.
+    rejectionReason: z.string().min(10, 'Please provide a reason (min 10 chars)'),
+    // Optional template code so we can group rejections analytically and
+    // so the customer email + dashboard renders the matching action
+    // checklist. Pass `'OTHER'` for fully custom reasons.
+    rejectionReasonCode: z.string().max(64).optional(),
+  }),
 ]);
 
 export async function PATCH(
@@ -87,10 +97,23 @@ export async function PATCH(
         },
       });
     } else {
-      const { rejectionReason } = parsed.data as { action: 'reject'; rejectionReason: string };
+      const { rejectionReason, rejectionReasonCode } = parsed.data as {
+        action: 'reject';
+        rejectionReason: string;
+        rejectionReasonCode?: string;
+      };
+      // Store the template code in metadata so /api/kyc can render the
+      // matching action checklist for the customer. The freeform text
+      // continues to live in the dedicated rejectionReason column.
       await tx.kycSubmission.update({
         where: { id },
-        data: { status: 'REJECTED', reviewedAt: now, reviewedBy: session.userId, rejectionReason },
+        data: {
+          status: 'REJECTED',
+          reviewedAt: now,
+          reviewedBy: session.userId,
+          rejectionReason,
+          rejectionReasonCode: rejectionReasonCode ?? null,
+        },
       });
 
       await tx.user.update({
@@ -125,8 +148,17 @@ export async function PATCH(
       logger.warn({ err: err instanceof Error ? err.message : err }, 'KYC approved email failed'),
     );
   } else {
-    const { rejectionReason } = parsed.data as { action: 'reject'; rejectionReason: string };
-    void sendKYCRejectedEmail(submission.user.email, displayName, rejectionReason).catch((err) =>
+    const { rejectionReason, rejectionReasonCode } = parsed.data as {
+      action: 'reject';
+      rejectionReason: string;
+      rejectionReasonCode?: string;
+    };
+    // Render structured actions in the email when the admin picked a
+    // template (anything other than OTHER). For OTHER / freeform the email
+    // falls back to a generic "resubmit through your dashboard" line.
+    const template = findRejectionTemplate(rejectionReasonCode);
+    const actions = template?.actions ?? [];
+    void sendKYCRejectedEmail(submission.user.email, displayName, rejectionReason, actions).catch((err) =>
       logger.warn({ err: err instanceof Error ? err.message : err }, 'KYC rejected email failed'),
     );
   }

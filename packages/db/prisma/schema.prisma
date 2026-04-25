@@ -354,6 +354,11 @@ model KycSubmission {
   expectedMonthlyInflowCents BigInt? @map("expected_monthly_inflow_cents")
 
   rejectionReason     String?  @map("rejection_reason")
+  // Stable template code (e.g. DOC_BLURRY, POA_TOO_OLD) so the customer
+  // dashboard + rejection email render the matching action checklist
+  // without parsing the freeform text. See
+  // apps/web/src/lib/kyc-rejection-templates.ts for the canonical list.
+  rejectionReasonCode String?  @map("rejection_reason_code")
   reviewedBy       String? @map("reviewed_by") @db.Uuid // AdminUser id
   submittedAt      DateTime @default(now()) @map("submitted_at")
   reviewedAt       DateTime? @map("reviewed_at")

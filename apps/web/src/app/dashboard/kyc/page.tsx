@@ -153,11 +153,31 @@ function fmtBytes(b: number): string {
 
 type KycState = 'loading' | 'not_started' | 'pending' | 'approved' | 'rejected'
 
+interface RejectionTemplate { code: string; customerMessage: string; actions: string[] }
+interface PrefillData {
+  docKind: 'nin' | 'passport' | 'drivers_license' | null
+  docNumber: string | null
+  fullLegalName: string | null
+  bvn: string | null
+  sourceOfFunds: string | null
+  purposeOfAccount: string | null
+  employmentStatus: string | null
+  occupation: string | null
+  expectedMonthlyInflowCents: string | null
+  addressLine1: string | null
+  addressLine2: string | null
+  city: string | null
+  addressState: string | null
+  postalCode: string | null
+}
+
 export default function KycPage() {
   const { me, loading: meLoading, refresh } = useMe()
 
   const [state, setState] = useState<KycState>('loading')
   const [rejectionReason, setRejectionReason] = useState<string | null>(null)
+  const [rejectionTemplate, setRejectionTemplate] = useState<RejectionTemplate | null>(null)
+  const [prefill, setPrefill] = useState<PrefillData | null>(null)
   const [showForm, setShowForm] = useState(false)
 
   useEffect(() => {
@@ -167,20 +187,31 @@ export default function KycPage() {
     const status = me.kycStatus
     if (tier === 'T2' || tier === 'T3') {
       setState('approved')
-    } else if (status === 'PENDING_REVIEW') {
-      setState('pending')
-    } else if (status === 'REJECTED') {
-      setState('rejected')
-      fetch('/api/kyc', { cache: 'no-store' })
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (d?.pendingSubmission?.rejectionReason) {
-            setRejectionReason(d.pendingSubmission.rejectionReason)
-          }
-        }).catch(() => { /* silent */ })
-    } else {
-      setState('not_started')
+      return
     }
+    if (status === 'PENDING_REVIEW') { setState('pending'); return }
+
+    // Hit /api/kyc for rejection details + prefill data. Fire for every
+    // non-pending case (REJECTED *and* NOT_STARTED) — even if the user
+    // hasn't been rejected this session, they may have address fields
+    // saved from a prior submission attempt that we can prefill.
+    fetch('/api/kyc', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.lastSubmission?.rejectionReason) {
+          setRejectionReason(d.lastSubmission.rejectionReason)
+        }
+        if (d?.lastSubmission?.rejectionTemplate) {
+          setRejectionTemplate(d.lastSubmission.rejectionTemplate as RejectionTemplate)
+        }
+        if (d?.lastSubmission?.prefill) {
+          setPrefill(d.lastSubmission.prefill as PrefillData)
+        }
+      })
+      .catch(() => { /* non-fatal — prefill just won't happen */ })
+
+    if (status === 'REJECTED') setState('rejected')
+    else setState('not_started')
   }, [me, meLoading])
 
   return (
@@ -196,11 +227,19 @@ export default function KycPage() {
       {state === 'approved' && <ApprovedCard />}
       {state === 'pending' && <PendingCard />}
       {state === 'rejected' && !showForm && (
-        <RejectedCard reason={rejectionReason} onResubmit={() => setShowForm(true)} />
+        <RejectedCard
+          reason={rejectionReason}
+          template={rejectionTemplate}
+          onResubmit={() => setShowForm(true)}
+        />
       )}
 
       {(state === 'not_started' || (state === 'rejected' && showForm)) && (
         <KycForm
+          // On a rejection we hand the form whatever we could decrypt from
+          // the last submission so the customer doesn't re-type fields
+          // they already filled. They only fix what was flagged.
+          prefill={prefill}
           onSubmitted={() => {
             toast.success('Submitted — we’ll email you within 24 hours.')
             setShowForm(false)
@@ -262,25 +301,61 @@ function PendingCard() {
   )
 }
 
-function RejectedCard({ reason, onResubmit }: { reason: string | null; onResubmit: () => void }) {
+function RejectedCard({
+  reason,
+  template,
+  onResubmit,
+}: {
+  reason: string | null
+  template: RejectionTemplate | null
+  onResubmit: () => void
+}) {
+  const actions = template?.actions ?? []
   return (
     <Card className="border-red-200 bg-red-50/50 dark:border-red-900 dark:bg-red-950/20">
-      <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/20 text-red-600">
-          <AlertCircle className="h-7 w-7" />
-        </div>
-        <div className="space-y-2 max-w-md">
-          <h2 className="text-lg font-semibold">Verification declined</h2>
-          {reason && (
-            <p className="rounded-md border border-red-300 bg-background px-3 py-2 text-left text-sm">
-              <span className="font-medium">Reason:</span> {reason}
+      <CardContent className="flex flex-col gap-5 py-8 px-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-500/20 text-red-600">
+            <AlertCircle className="h-6 w-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-semibold">Verification declined</h2>
+            <p className="text-sm text-muted-foreground">
+              We need a bit more from you before we can verify your identity.
             </p>
-          )}
-          <p className="text-sm text-muted-foreground">
-            You can submit again with fresh documents. Make sure images are sharp, all corners of the ID are visible, and the selfie matches the photo on the ID.
-          </p>
+          </div>
         </div>
-        <Button onClick={onResubmit}>Submit again</Button>
+
+        {reason && (
+          <div className="rounded-lg border border-red-300/70 bg-background px-4 py-3 text-sm">
+            <p className="text-xs uppercase tracking-wider text-red-700/80 dark:text-red-400/80 mb-1">Reason</p>
+            <p className="text-foreground leading-relaxed">{reason}</p>
+          </div>
+        )}
+
+        {actions.length > 0 && (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/20 px-4 py-3">
+            <p className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-400 mb-2">What to do</p>
+            <ol className="space-y-2">
+              {actions.map((step, idx) => (
+                <li key={idx} className="flex gap-3 text-sm leading-relaxed">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-[11px] font-semibold text-white">
+                    {idx + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          Your previous answers are still saved — open the form and fix only what&rsquo;s flagged above.
+        </p>
+
+        <div className="flex justify-end">
+          <Button onClick={onResubmit}>Resubmit verification</Button>
+        </div>
       </CardContent>
     </Card>
   )
@@ -288,27 +363,39 @@ function RejectedCard({ reason, onResubmit }: { reason: string | null; onResubmi
 
 // ── Form ───────────────────────────────────────────────────────────────────
 
-function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
-  const [docType, setDocType] = useState<IdType>('nin')
-  const [docNumber, setDocNumber] = useState('')
-  const [fullLegalName, setFullLegalName] = useState('')
-  const [bvn, setBvn] = useState('')
-  const [purposeOfAccount, setPurposeOfAccount] = useState('')
-  const [sourceOfFunds, setSourceOfFunds] = useState('')
+function KycForm({
+  onSubmitted,
+  prefill,
+}: {
+  onSubmitted: () => void
+  prefill: PrefillData | null
+}) {
+  // Prefill on mount from the last submission. Files are NEVER prefilled
+  // (they live encrypted on disk under a per-DEK envelope and the
+  // browser can't reconstruct a File handle from a server-decrypted
+  // blob without re-uploading) so the customer always re-attaches the
+  // ID / liveness / proof-of-address. That's intentional: rejected
+  // submissions usually need at least one fresh photo anyway.
+  const [docType, setDocType] = useState<IdType>(prefill?.docKind ?? 'nin')
+  const [docNumber, setDocNumber] = useState(prefill?.docNumber ?? '')
+  const [fullLegalName, setFullLegalName] = useState(prefill?.fullLegalName ?? '')
+  const [bvn, setBvn] = useState(prefill?.bvn ?? '')
+  const [purposeOfAccount, setPurposeOfAccount] = useState(prefill?.purposeOfAccount ?? '')
+  const [sourceOfFunds, setSourceOfFunds] = useState(prefill?.sourceOfFunds ?? '')
 
   // Address — required by Graph for both NGN + USD virtual accounts.
-  const [addressLine1, setAddressLine1] = useState('')
-  const [addressLine2, setAddressLine2] = useState('')
-  const [city, setCity] = useState('')
-  const [addressState, setAddressState] = useState('')
-  const [postalCode, setPostalCode] = useState('')
+  const [addressLine1, setAddressLine1] = useState(prefill?.addressLine1 ?? '')
+  const [addressLine2, setAddressLine2] = useState(prefill?.addressLine2 ?? '')
+  const [city, setCity] = useState(prefill?.city ?? '')
+  const [addressState, setAddressState] = useState(prefill?.addressState ?? '')
+  const [postalCode, setPostalCode] = useState(prefill?.postalCode ?? '')
 
   // background_information — Graph requires it for USD accounts. We collect
   // it for every submission so the USD rail is unlocked automatically after
   // approval.
-  const [employmentStatus, setEmploymentStatus] = useState('')
-  const [occupation, setOccupation] = useState('')
-  const [expectedMonthlyInflowUsd, setExpectedMonthlyInflowUsd] = useState('')
+  const [employmentStatus, setEmploymentStatus] = useState(prefill?.employmentStatus ?? '')
+  const [occupation, setOccupation] = useState(prefill?.occupation ?? '')
+  const [expectedMonthlyInflowUsd, setExpectedMonthlyInflowUsd] = useState(prefill?.expectedMonthlyInflowCents ?? '')
 
   const [idFront, setIdFront] = useState<File | null>(null)
   const [idBack, setIdBack] = useState<File | null>(null)

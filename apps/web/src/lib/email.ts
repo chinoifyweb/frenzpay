@@ -337,27 +337,40 @@ export async function sendKYCSubmittedEmail(email: string, name: string) {
   })
 }
 
+/**
+ * Sent when an admin approves a KYC submission. Reflects the new
+ * post-approval flow where the customer still has to *apply* for the
+ * USD / NGN account separately — provisioning is no longer automatic
+ * on approval. The email tells them what's now unlocked vs. what they
+ * still need to request.
+ */
 export async function sendKYCApprovedEmail(email: string, name: string) {
   return resend.emails.send({
     from: FROM_SUPPORT,
     to: email,
-    subject: 'KYC Verification Approved!',
+    subject: 'You’re verified on Frenz Pay',
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
-          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">KYC Approved!</h1>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">You&rsquo;re verified!</h1>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Great news! Your identity verification has been approved. You now have full access to all Frenz Pay features including:</p>
-        <div style="background: #f0fdf4; border-radius: 12px; padding: 20px; margin: 24px 0;">
-          <p style="margin: 0 0 8px; color: #374151; font-size: 14px;">&#x2714; Virtual USD, GBP & EUR accounts</p>
-          <p style="margin: 0 0 8px; color: #374151; font-size: 14px;">&#x2714; Receive unlimited payments</p>
-          <p style="margin: 0; color: #374151; font-size: 14px;">&#x2714; USDT withdrawals</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Your identity has been verified. Welcome to Frenz Pay properly &mdash; here&rsquo;s what changes for you now:</p>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0 0 12px; color: #15803d; font-size: 14px; font-weight: 600;">Available now</p>
+          <p style="margin: 0 0 6px; color: #374151; font-size: 14px;">&#x2714; Higher transaction limits</p>
+          <p style="margin: 0 0 6px; color: #374151; font-size: 14px;">&#x2714; USDT withdrawals (TRC-20 + ERC-20)</p>
+          <p style="margin: 0; color: #374151; font-size: 14px;">&#x2714; Naira withdrawals to any Nigerian bank</p>
+        </div>
+        <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; padding: 20px; margin: 16px 0 24px;">
+          <p style="margin: 0 0 8px; color: #1d4ed8; font-size: 14px; font-weight: 600;">What&rsquo;s next: request a USD account</p>
+          <p style="margin: 0; color: #374151; font-size: 14px; line-height: 1.6;">USD bank-account details aren&rsquo;t issued automatically. Open <strong>Accounts</strong> on your dashboard and tap <em>Request USD account</em> &mdash; our team reviews each request within 24 hours and your virtual US bank details land in your dashboard once approved.</p>
         </div>
         <div style="text-align: center; margin: 24px 0;">
-          <a href="https://frenzpay.co/#download" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Open App</a>
+          <a href="https://frenzpay.co/dashboard" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Open dashboard</a>
         </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Need help? Chat with us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a>.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
       </div>
@@ -365,28 +378,65 @@ export async function sendKYCApprovedEmail(email: string, name: string) {
   })
 }
 
-export async function sendKYCRejectedEmail(email: string, name: string, reason: string) {
+/**
+ * Sent when an admin rejects a KYC submission. The optional `actions`
+ * argument renders as a numbered <ol> in the email so customers see a
+ * concrete checklist instead of a single sentence to interpret. Pass
+ * an empty array (or omit) for fully freeform rejections.
+ */
+export async function sendKYCRejectedEmail(
+  email: string,
+  name: string,
+  reason: string,
+  actions: string[] = [],
+) {
+  const actionsList = actions.length > 0
+    ? `
+      <p style="color: #374151; font-size: 15px; line-height: 1.6; margin: 24px 0 8px;">Here&rsquo;s what to do:</p>
+      <ol style="margin: 0 0 24px; padding-left: 22px; color: #374151; font-size: 14px; line-height: 1.7;">
+        ${actions.map((a) => `<li style="margin: 0 0 6px;">${escapeHtml(a)}</li>`).join('')}
+      </ol>
+    `
+    : `<p style="color: #374151; font-size: 15px; line-height: 1.6;">Please re-submit through your dashboard. If anything&rsquo;s unclear, chat with us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a>.</p>`;
+
   return resend.emails.send({
     from: FROM_SUPPORT,
     to: email,
-    subject: 'KYC Verification Update',
+    subject: 'Action needed on your Frenz Pay verification',
     html: `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
         <div style="text-align: center; margin-bottom: 32px;">
           <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
-          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Verification Update</h1>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">We need a bit more from you</h1>
         </div>
         <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">We were unable to verify your identity with the documents you submitted. Here's what happened:</p>
-        <div style="background: #fef2f2; border-radius: 12px; padding: 20px; margin: 24px 0;">
-          <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">${reason}</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Thanks for submitting your verification. We couldn&rsquo;t complete it this round &mdash; here&rsquo;s why:</p>
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">${escapeHtml(reason)}</p>
         </div>
-        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Please re-submit your documents through the app. If you need help, chat with us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a>.</p>
+        ${actionsList}
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="https://frenzpay.co/dashboard/kyc" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Resubmit verification</a>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Your previous answers are still saved &mdash; you only need to fix what&rsquo;s flagged above. Reach us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a> if you&rsquo;re stuck.</p>
         <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
         <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay &mdash; Your Money, Finally Without Borders</p>
       </div>
     `,
   })
+}
+
+/** Tiny HTML-escape so a customer's name (or a custom rejection note)
+ *  can't smuggle markup into the email. Resend strips most things but
+ *  better safe than sorry, especially for the rejection-reason field
+ *  which an admin might paste a URL into. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 export async function sendWithdrawalCompleteEmail(email: string, name: string, amount: number, currency: string, txHash: string, network: string) {
