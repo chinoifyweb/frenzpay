@@ -117,6 +117,11 @@ export default function AdminAccountRequestsPage() {
   const [showRejectInput, setShowRejectInput] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+  // Inline DOB backfill — appears on the review modal when the
+  // customer's User.dob is null. Without this, "Approve & provision"
+  // returns "Missing fields required by Graph: dob" from upstream.
+  const [dobInput, setDobInput] = useState('')
+  const [dobSaving, setDobSaving] = useState(false)
 
   // Pull a generous page from the API (capped at 50 server-side) and
   // then split into columns client-side. For more than 50 we'd add
@@ -151,6 +156,36 @@ export default function AdminAccountRequestsPage() {
     setSelected(null)
     setShowRejectInput(false)
     setRejectionReason('')
+    setDobInput('')
+    setDobSaving(false)
+  }
+
+  async function saveDob() {
+    if (!selected) return
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dobInput)) {
+      toast.error('Enter the date as YYYY-MM-DD.')
+      return
+    }
+    setDobSaving(true)
+    try {
+      const res = await fetch(`/api/admin/users/${selected.user.id}/dob`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dob: dobInput }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`)
+      toast.success('Date of birth saved — you can approve & provision now.')
+      // Optimistically flip the local flag so the form disappears and
+      // the Approve button enables without a full re-fetch.
+      setSelected({ ...selected, user: { ...selected.user, hasDob: true } })
+      // And refresh the list so the row reflects upstream.
+      void fetchList()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save DOB')
+    } finally {
+      setDobSaving(false)
+    }
   }
 
   async function act(action: 'approve' | 'reject') {
@@ -349,6 +384,49 @@ export default function AdminAccountRequestsPage() {
                   </Alert>
                 )}
 
+                {/* Inline DOB backfill — Graph will reject provisioning
+                    with "Missing fields required by Graph: dob" if the
+                    customer's User.dob is null (i.e. they completed
+                    KYC before DOB collection was added to the form).
+                    Show this form so the admin can set it before
+                    clicking Approve. */}
+                {selected.status === 'PENDING' && !selected.user.hasDob && !showRejectInput && (
+                  <div className="rounded-lg border border-amber-300/70 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 p-3 space-y-2">
+                    <div className="text-xs text-amber-900 dark:text-amber-200 leading-relaxed">
+                      <p className="font-semibold mb-0.5">⚠ Date of birth missing</p>
+                      <p className="opacity-90">
+                        This customer completed KYC before DOB collection was added. Set it below before approving — Graph rejects USD provisioning without it.
+                      </p>
+                    </div>
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1 space-y-1">
+                        <Label htmlFor="admin-set-dob" className="text-xs font-medium">Date of birth</Label>
+                        <Input
+                          id="admin-set-dob"
+                          type="date"
+                          value={dobInput}
+                          onChange={(e) => setDobInput(e.target.value)}
+                          max={(() => {
+                            const d = new Date()
+                            d.setFullYear(d.getFullYear() - 18)
+                            return d.toISOString().split('T')[0]
+                          })()}
+                          disabled={dobSaving}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={saveDob}
+                        disabled={dobSaving || !dobInput}
+                      >
+                        {dobSaving ? <Loader2 className="size-4 animate-spin mr-1.5" /> : null}
+                        Save DOB
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {selected.status === 'PENDING' && showRejectInput && (
                   <div className="space-y-1.5">
                     <Label className="text-sm font-medium text-destructive">
@@ -375,7 +453,12 @@ export default function AdminAccountRequestsPage() {
                     <Button variant="outline" onClick={() => setShowRejectInput(true)}>
                       <XCircle className="size-4 mr-1.5" />Reject
                     </Button>
-                    <Button onClick={() => act('approve')} disabled={actionLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <Button
+                      onClick={() => act('approve')}
+                      disabled={actionLoading || !selected.user.hasDob}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                      title={!selected.user.hasDob ? 'Set the customer\'s date of birth above before approving.' : undefined}
+                    >
                       {actionLoading ? <Loader2 className="size-4 mr-1.5 animate-spin" /> : <CheckCircle2 className="size-4 mr-1.5" />}
                       Approve & provision
                     </Button>
