@@ -371,15 +371,68 @@ export async function syncUserToGraph(userId: string): Promise<GraphSyncResult> 
       return { ok: true, graphPersonId: res.personId, status: res.status, created: false };
     }
 
-    const res = await createGraphPerson(payload, {
-      idempotencyKey: `person-${userId}`,
-    });
-    await prisma.user.update({
-      where: { id: userId },
-      data: { graphPersonId: res.personId },
-    });
-    logger.info({ userId, graphPersonId: res.personId }, 'Graph Person created');
-    return { ok: true, graphPersonId: res.personId, status: res.status, created: true };
+    try {
+      const res = await createGraphPerson(payload, {
+        idempotencyKey: `person-${userId}`,
+      });
+      await prisma.user.update({
+        where: { id: userId },
+        data: { graphPersonId: res.personId },
+      });
+      logger.info({ userId, graphPersonId: res.personId }, 'Graph Person created');
+      return { ok: true, graphPersonId: res.personId, status: res.status, created: true };
+    } catch (err) {
+      // Recover from "Person already exists" — Graph stores Persons
+      // keyed by ID-doc number, so a previous provisioning attempt
+      // (or a manual upload) may have created the Person without us
+      // capturing the returned ID. The error message includes the
+      // existing Person ID after a literal " - " separator, e.g.:
+      //
+      //   "Person with the provided ID information already exists - 930413f740fe11f183520e74f6457b17"
+      //
+      // Rather than failing forever, parse that ID, save it on the
+      // User, and let the caller (provisionGraphAccount) move on to
+      // the bank_account create step. PATCH the Person with our
+      // current payload to reconcile any drift while we're at it.
+      const msg = err instanceof Error ? err.message : String(err);
+      const dupIdMatch = msg.match(/already exists\s*-\s*([0-9a-fA-F]{16,40})/);
+      if (dupIdMatch) {
+        const existingId = dupIdMatch[1]!;
+        logger.warn(
+          { userId, existingPersonId: existingId },
+          'Graph Person already exists for ID — linking instead of recreating',
+        );
+        await prisma.user.update({
+          where: { id: userId },
+          data: { graphPersonId: existingId },
+        });
+        // Best-effort PATCH so Graph has fresh data; ignore any
+        // failure here because the link is already saved and the
+        // caller can proceed.
+        try {
+          const patch: GraphPersonUpdatePayload = {
+            name_first: payload.name_first,
+            name_last: payload.name_last,
+            name_other: payload.name_other,
+            email: payload.email,
+            phone: payload.phone,
+            dob: payload.dob,
+            address: payload.address,
+            background_information: payload.background_information,
+          };
+          const upd = await updateGraphPerson(existingId, patch);
+          return { ok: true, graphPersonId: upd.personId, status: upd.status, created: false };
+        } catch (patchErr) {
+          logger.warn(
+            { userId, existingPersonId: existingId, err: patchErr instanceof Error ? patchErr.message : patchErr },
+            'PATCH on linked Graph Person failed — proceeding with link only',
+          );
+          return { ok: true, graphPersonId: existingId, created: false };
+        }
+      }
+      // Anything else: bubble up.
+      throw err;
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error({ userId, err: msg }, 'Graph Person sync failed');
