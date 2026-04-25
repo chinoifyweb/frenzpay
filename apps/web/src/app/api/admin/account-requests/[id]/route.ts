@@ -174,11 +174,34 @@ export async function PATCH(
   let provisionError: string | null = null;
 
   try {
-    // Make sure the Graph person + KYC docs are synced. These are
-    // idempotent for repeated calls.
+    // Make sure the Graph person + KYC docs are synced before we ask
+    // Graph to mint a bank_account. uploadKycDocsToGraph takes a
+    // SUBMISSION id (not a user id) — earlier code was passing
+    // request.userId here so the upload silently no-op'd, which is
+    // why /bank_account was returning "missing document to satisfy
+    // personal_identity requirements". Fetch the latest APPROVED
+    // submission for this user and push its docs.
     try {
       await syncUserToGraph(request.userId);
-      await uploadKycDocsToGraph(request.userId).catch(() => null);
+      const latestKyc = await prisma.kycSubmission.findFirst({
+        where: { userId: request.userId, status: 'APPROVED' },
+        orderBy: { reviewedAt: 'desc' },
+        select: { id: true },
+      });
+      if (latestKyc) {
+        const docResult = await uploadKycDocsToGraph(latestKyc.id);
+        if (!docResult.ok) {
+          logger.warn(
+            { userId: request.userId, submissionId: latestKyc.id, failures: docResult.failures },
+            'Graph KYC doc upload had failures (continuing — Graph may still allow create if it accepted earlier copies)',
+          );
+        }
+      } else {
+        logger.warn(
+          { userId: request.userId },
+          'No APPROVED KycSubmission for user — Graph bank_account create will likely fail',
+        );
+      }
     } catch (err) {
       logger.warn(
         { userId: request.userId, err: err instanceof Error ? err.message : err },
