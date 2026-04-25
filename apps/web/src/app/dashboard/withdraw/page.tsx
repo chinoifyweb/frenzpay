@@ -283,9 +283,17 @@ export default function WithdrawPage() {
     }
     setSubmitting(true);
     try {
+      // Mint a fresh idempotency key on each submit attempt. If the fetch
+      // throws mid-flight (network blip) and the user clicks Submit again,
+      // they'll get a NEW key — that's intentional, retries should be a
+      // conscious decision. The server-side unique constraint still
+      // dedupes against any actual successful prior post.
       const res = await fetch('/api/withdrawals', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
         body: JSON.stringify({
           beneficiaryId: selectedBeneficiary.id,
           sourceAmountCents: cents,

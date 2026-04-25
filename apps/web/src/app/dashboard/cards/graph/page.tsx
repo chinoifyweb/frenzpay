@@ -130,9 +130,15 @@ export default function GraphCardsPage() {
     }
     setIssuing(true);
     try {
+      // Idempotency-Key required by the server: a network retry would
+      // otherwise issue a second card AND debit the creation fee twice.
+      // Fresh UUID per submit attempt; user retries are conscious clicks.
       const res = await fetch('/api/cards/graph', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
         body: JSON.stringify({ label: issueLabel, funding_amount: cents }),
       });
       const json = await res.json();
@@ -204,9 +210,14 @@ export default function GraphCardsPage() {
       const path = fundMode === 'fund'
         ? `/api/cards/graph/${fundCard.id}/fund`
         : `/api/cards/graph/${fundCard.id}/withdraw`;
+      // Idempotency-Key required: fund/withdraw both move money, and a
+      // retry without the same key would double-spend.
       const res = await fetch(path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+        },
         body: JSON.stringify({ amount: cents }),
       });
       const json = await res.json();

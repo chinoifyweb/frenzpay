@@ -26,6 +26,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
+import { getIdempotencyKey } from '@/lib/idempotency';
 import { prisma } from '@frenzpay/db';
 import {
   createGraphConversion,
@@ -43,6 +44,12 @@ const Schema = z.object({
 
 export async function POST(req: NextRequest) {
   const { session } = await requireSession();
+
+  // Idempotency-Key required — see lib/idempotency.ts. A network retry of
+  // an FX conversion would otherwise debit + credit twice at Graph.
+  const idem = getIdempotencyKey(req, 'fx-conversion');
+  if (!idem.ok) return idem.response;
+  const idempotencyKey = idem.key;
 
   if (!isGraphConfigured()) {
     return NextResponse.json({ error: 'FX conversions are not configured yet' }, { status: 503 });
@@ -99,7 +106,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await createGraphConversion(payload, {
-      idempotencyKey: `conv-${session.userId}-${Date.now()}`,
+      idempotencyKey,
     });
     logger.info(
       {

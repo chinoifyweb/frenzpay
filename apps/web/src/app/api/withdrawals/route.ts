@@ -21,6 +21,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
+import { getIdempotencyKey } from '@/lib/idempotency';
 import { prisma } from '@frenzpay/db';
 import { logger } from '@frenzpay/logger';
 import { fetchGraphRate, isGraphConfigured } from '@frenzpay/providers/graph';
@@ -115,6 +116,15 @@ async function readSetting<T>(key: string, fallback: T): Promise<T> {
 
 export async function POST(req: NextRequest) {
   const { session } = await requireSession();
+
+  // Idempotency-Key is required: this is a money-moving endpoint and a
+  // server-generated key would let a network retry post a duplicate
+  // withdrawal. The client must send the same UUID/ULID on every retry
+  // so the second call dedupes against the first via Transaction's
+  // unique constraint.
+  const idem = getIdempotencyKey(req, 'withdraw');
+  if (!idem.ok) return idem.response;
+  const idempotencyKey = idem.key;
 
   let body: unknown;
   try {
@@ -281,9 +291,8 @@ export async function POST(req: NextRequest) {
 
   // ── Create Transaction + Withdrawal + Hold the funds ─────────────────────
   const holdAccountId = await ensureAccount(prisma, session.userId, 'USD', 'HOLD');
-  const idempotencyKey = `withdraw-${session.userId}-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 10)}`;
+  // idempotencyKey was read from the `Idempotency-Key` request header at the
+  // top of this handler — see getIdempotencyKey() call.
 
   try {
     const tx = await postTransaction(prisma, {

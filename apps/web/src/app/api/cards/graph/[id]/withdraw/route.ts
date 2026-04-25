@@ -10,6 +10,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
+import { getIdempotencyKey } from '@/lib/idempotency';
 import { prisma } from '@frenzpay/db';
 import { withdrawFromGraphCard, isGraphConfigured } from '@frenzpay/providers/graph';
 import { logger } from '@frenzpay/logger';
@@ -25,6 +26,12 @@ export async function POST(
 ) {
   const { session } = await requireSession();
   const { id } = await params;
+
+  // Idempotency-Key required: a retry would otherwise drain the card
+  // twice into the master wallet.
+  const idem = getIdempotencyKey(req, 'card-withdraw');
+  if (!idem.ok) return idem.response;
+  const idempotencyKey = idem.key;
 
   if (!isGraphConfigured()) {
     return NextResponse.json({ error: 'Card withdraw not configured' }, { status: 503 });
@@ -55,7 +62,7 @@ export async function POST(
   try {
     const res = await withdrawFromGraphCard(card.externalCardId, parsed.data.amount, {
       custom_reference: parsed.data.custom_reference,
-      idempotencyKey: `card-wd-${card.id}-${Date.now()}`,
+      idempotencyKey,
     });
     logger.info(
       { userId: session.userId, cardId: id, amount: parsed.data.amount },

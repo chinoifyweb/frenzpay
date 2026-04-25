@@ -18,6 +18,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
+import { getIdempotencyKey } from '@/lib/idempotency';
 import { prisma } from '@frenzpay/db';
 import { createGraphCard, isGraphConfigured } from '@frenzpay/providers/graph';
 import {
@@ -87,6 +88,12 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const { session } = await requireSession();
 
+  // Idempotency-Key required: a retry of card issuance would otherwise
+  // create a second Graph card AND debit the creation fee twice.
+  const idem = getIdempotencyKey(req, 'card-create');
+  if (!idem.ok) return idem.response;
+  const idempotencyKey = idem.key;
+
   if (!isGraphConfigured()) {
     return NextResponse.json(
       { error: 'Graph card issuance is not configured on this environment' },
@@ -154,7 +161,7 @@ export async function POST(req: NextRequest) {
         label: parsed.data.label ?? 'Primary card',
         funding_amount: parsed.data.funding_amount,
       },
-      { idempotencyKey: `graph-card-${session.userId}-${Date.now()}` },
+      { idempotencyKey },
     );
 
     // Charge the creation fee + create the Card row atomically. If Graph

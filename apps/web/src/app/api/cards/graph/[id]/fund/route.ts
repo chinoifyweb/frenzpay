@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
+import { getIdempotencyKey } from '@/lib/idempotency';
 import { prisma } from '@frenzpay/db';
 import { fundGraphCard, isGraphConfigured } from '@frenzpay/providers/graph';
 import { logger } from '@frenzpay/logger';
@@ -27,6 +28,12 @@ export async function POST(
 ) {
   const { session } = await requireSession();
   const { id } = await params;
+
+  // Idempotency-Key required: a retry would otherwise debit the master
+  // wallet twice and double-fund the card.
+  const idem = getIdempotencyKey(req, 'card-fund');
+  if (!idem.ok) return idem.response;
+  const idempotencyKey = idem.key;
 
   if (!isGraphConfigured()) {
     return NextResponse.json({ error: 'Card funding not configured' }, { status: 503 });
@@ -63,7 +70,7 @@ export async function POST(
   try {
     const res = await fundGraphCard(card.externalCardId, parsed.data.amount, {
       custom_reference: parsed.data.custom_reference,
-      idempotencyKey: `card-fund-${card.id}-${Date.now()}`,
+      idempotencyKey,
     });
     logger.info(
       { userId: session.userId, cardId: id, amount: parsed.data.amount },
