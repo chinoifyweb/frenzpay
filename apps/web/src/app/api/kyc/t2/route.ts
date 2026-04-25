@@ -285,6 +285,41 @@ export async function POST(req: NextRequest) {
   const encryptedName = encryptField(fullLegalName, session.userId);
   const encryptedBvn = bvn ? encryptField(bvn, session.userId) : null;
   const bvnBlindIdx = bvn ? blindIndex(bvn) : null;
+
+  // ── BVN duplicate-account check ──────────────────────────────────────────
+  //
+  // The bvn_blind_index column is UNIQUE on kyc_submissions, which is meant
+  // to catch one BVN being used by multiple accounts (a common fraud
+  // pattern). But the same user re-submitting after a rejection ALSO
+  // hits the same blind index — and the previous code would crash with
+  // P2002 when that happened, leaving the customer unable to retry.
+  //
+  // The fix: do the duplicate-account check ourselves, in app code, so
+  // we can distinguish "same user retrying" (allow, just don't write the
+  // blind index again) from "different user claiming same BVN" (block
+  // with a clear error). On a same-user retry we still persist the BVN
+  // ciphertext on the new row — the customer's review needs it — but we
+  // leave bvnBlindIndex null because the prior row already holds it.
+  let bvnBlindIdxForInsert: string | null = bvnBlindIdx;
+  if (bvnBlindIdx) {
+    const existing = await prisma.kycSubmission.findFirst({
+      where: { bvnBlindIndex: bvnBlindIdx },
+      select: { userId: true },
+    });
+    if (existing && existing.userId !== session.userId) {
+      return NextResponse.json(
+        { error: 'This BVN is already linked to another FrenzPay account. If this is a mistake, please contact support@frenzpay.co.' },
+        { status: 409 },
+      );
+    }
+    if (existing && existing.userId === session.userId) {
+      // Same user resubmitting — keep the blind index null on the new
+      // row so the unique constraint is satisfied. The prior submission
+      // still owns it, which is fine for fraud-detection purposes.
+      bvnBlindIdxForInsert = null;
+    }
+  }
+
   const encryptedLine1 = encryptField(addressLine1, session.userId);
   const encryptedLine2 = addressLine2 ? encryptField(addressLine2, session.userId) : null;
   const encryptedCity = encryptField(city, session.userId);
@@ -351,7 +386,7 @@ export async function POST(req: NextRequest) {
         provider: 'manual',
         fullLegalName: encryptedName,
         [docFieldMap[docType]]: encryptedDocNumber,
-        ...(encryptedBvn ? { bvn: encryptedBvn, bvnBlindIndex: bvnBlindIdx } : {}),
+        ...(encryptedBvn ? { bvn: encryptedBvn, bvnBlindIndex: bvnBlindIdxForInsert } : {}),
         sourceOfFunds,
         purposeOfAccount,
         employmentStatus,
