@@ -536,6 +536,39 @@ export async function sendAdminAccountRequestNotification(
   });
 }
 
+/**
+ * Tells the customer that an admin has reset their Google Authenticator
+ * after they produced supporting documents. Subject is deliberately
+ * "Confirming we reset…" — phrasing the action as a confirmation makes
+ * it land less alarming when it WAS the customer's own request, and
+ * more obviously suspicious if it wasn't (so they reach out faster).
+ */
+export async function sendCustomerMfaResetEmail(email: string, name: string) {
+  return resend.emails.send({
+    from: FROM_SUPPORT,
+    to: email,
+    subject: 'Confirming we reset your authenticator',
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Authenticator reset</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">As you requested, our team has cleared the Google Authenticator linked to your Frenz Pay account. The next time you sign in, we&rsquo;ll email you a 6-digit code instead.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">When you&rsquo;re ready, head back to <a href="https://frenzpay.co/dashboard/security" style="color: #22c55e; text-decoration: none;">Security</a> in your dashboard and link a new authenticator.</p>
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 16px 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 13px; line-height: 1.6;">
+            <strong>Wasn&rsquo;t you?</strong> Reply to this email immediately and change your password &mdash; we&rsquo;ll lock the account while we investigate.
+          </p>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay Support &mdash; support@frenzpay.co</p>
+      </div>
+    `,
+  });
+}
+
 /** Tiny HTML-escape so a customer's name (or a custom rejection note)
  *  can't smuggle markup into the email. Resend strips most things but
  *  better safe than sorry, especially for the rejection-reason field

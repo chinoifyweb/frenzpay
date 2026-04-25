@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { getIdempotencyKey } from '@/lib/idempotency';
+import { requireCustomerTotp } from '@/lib/customer-mfa';
 import { prisma } from '@frenzpay/db';
 import { logger } from '@frenzpay/logger';
 import { fetchGraphRate, isGraphConfigured } from '@frenzpay/providers/graph';
@@ -98,6 +99,11 @@ const CreateSchema = z.object({
   sourceAmountCents: z.number().int().positive().max(10_000_000_00),
   /** Optional Graph rate_id to lock in the quoted rate. */
   rate_id: z.string().optional(),
+  /**
+   * Authenticator code for the MFA gate — also accepted via the
+   * X-Mfa-Token header. See requireCustomerTotp() in lib/customer-mfa.ts.
+   */
+  totpCode: z.string().regex(/^\d{6}$/, 'Authenticator code must be 6 digits').optional(),
 });
 
 /** Read a platform setting with a typed default. */
@@ -139,6 +145,15 @@ export async function POST(req: NextRequest) {
       { status: 422 },
     );
   }
+
+  // Require a fresh authenticator code BEFORE we touch any balances.
+  // Email OTP is explicitly NOT acceptable here — a compromised email
+  // would otherwise be enough to drain the wallet. Customer must have
+  // Google Authenticator (or any TOTP app) enrolled and supply the
+  // current 6-digit code in the X-Mfa-Token header (or `totpCode` body
+  // field as a back-compat fallback).
+  const mfa = await requireCustomerTotp(req, session.userId, parsed.data as { totpCode?: string });
+  if (!mfa.ok) return mfa.response;
 
   // ── Eligibility ──────────────────────────────────────────────────────────
   const user = await prisma.user.findUnique({

@@ -21,6 +21,7 @@ import {
   Link2,
   AlertTriangle,
   Landmark,
+  KeyRound,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { NAV_ITEMS } from '@/lib/constants'
@@ -57,6 +58,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Link2,
   AlertTriangle,
   Landmark,
+  KeyRound,
 }
 
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {

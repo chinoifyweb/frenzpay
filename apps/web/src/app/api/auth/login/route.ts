@@ -225,30 +225,44 @@ export async function POST(request: NextRequest) {
 
   logger.info({ userId: user.id, email }, 'login: successful');
 
-  // 7. Email OTP step — REQUIRED on every customer sign-in.
+  // 7. Second factor — TOTP if the user has Google Authenticator enrolled,
+  //    otherwise email OTP. Either way the password-only step never mints
+  //    a session; the verify endpoint does.
   //
-  // Even if the user has TOTP enrolled (rare today; was admin-only before),
-  // we still mint an email OTP. Reason: a single uniform second-factor flow
-  // is much easier to reason about for operators and for the customer; we'd
-  // rather one well-tested path than two slightly different ones. If we
-  // later add TOTP support to customer accounts, branch here on
-  // user.mfaSecrets.length to swap in the totp-verify path; for now the
-  // mfaSecrets/mfaRequired flags are read-only signal.
-  //
-  // The 6-digit code is generated server-side, hashed with SHA-256 before
-  // landing in Redis (so a Redis-only compromise can't read live codes),
-  // and bundled with everything the verify-otp route needs to mint a
-  // session: userId, deviceId, ip, userAgent.
-  //
-  // TTL: 10 minutes. Single-use enforced by deleting the Redis key on
-  // successful verify.
+  // The challenge token is the same shape regardless of which path the
+  // user is on — the response just tells the UI which step to render
+  // (`mfaMethod: 'totp' | 'email'`).
   const challengeToken = randomBytes(32).toString('hex');
+
+  if (user.mfaSecrets.length > 0) {
+    // TOTP path. The verify endpoint pulls the user's active MfaSecret
+    // and runs verifyTotp() against the supplied 6-digit code. We just
+    // hand it the userId + device identity in Redis so the session
+    // gets minted with the right metadata.
+    await redis.set(
+      `mfa_challenge:${challengeToken}`,
+      JSON.stringify({ userId: user.id, deviceId: device.id, ip, userAgent }),
+      'EX',
+      300, // 5 minutes — TOTP windows are tight, no need for 10
+    );
+    logger.info({ userId: user.id, email }, 'login: password ok, TOTP challenge issued');
+    return NextResponse.json({
+      requiresOtp: true,
+      mfaMethod: 'totp' as const,
+      challengeToken,
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    });
+  }
+
+  // Email OTP path. 6-digit code is generated server-side, hashed with
+  // SHA-256 before landing in Redis (so a Redis-only compromise can't
+  // read live codes), and bundled with everything the verify-otp route
+  // needs to mint a session.
   const otp = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const otpHash = createHash('sha256').update(otp).digest('hex');
-  const challengeKey = `login_otp:${challengeToken}`;
 
   await redis.set(
-    challengeKey,
+    `login_otp:${challengeToken}`,
     JSON.stringify({
       userId: user.id,
       otpHash,
@@ -271,10 +285,11 @@ export async function POST(request: NextRequest) {
     ),
   );
 
-  logger.info({ userId: user.id, email }, 'login: password ok, OTP issued');
+  logger.info({ userId: user.id, email }, 'login: password ok, email OTP issued');
 
   return NextResponse.json({
     requiresOtp: true,
+    mfaMethod: 'email' as const,
     challengeToken,
     // Mask the email so the UI can show "...@gmail.com" without the user
     // having to remember which address they used.

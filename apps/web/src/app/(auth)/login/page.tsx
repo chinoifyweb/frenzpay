@@ -58,7 +58,14 @@ function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
 
   // ── OTP step state ────────────────────────────────────────────────────────
+  // mfaMethod tells us which UI + verify endpoint to use:
+  //   'totp'  → user has Google Authenticator enrolled; show "Enter the
+  //             6-digit code from your authenticator app", verify against
+  //             /api/auth/mfa/totp-verify (mode: challenge)
+  //   'email' → fall-back; show "Code sent to ...@x.com", verify against
+  //             /api/auth/login/verify-otp
   const [otpStep, setOtpStep] = useState(false)
+  const [mfaMethod, setMfaMethod] = useState<'totp' | 'email'>('email')
   const [challengeToken, setChallengeToken] = useState('')
   const [emailHint, setEmailHint] = useState('')
   const [otpCode, setOtpCode] = useState('')
@@ -102,11 +109,16 @@ function LoginForm() {
       }
 
       if (json.requiresOtp) {
+        const method: 'totp' | 'email' = json.mfaMethod === 'totp' ? 'totp' : 'email'
+        setMfaMethod(method)
         setChallengeToken(json.challengeToken)
         setEmailHint(json.emailHint ?? data.email)
         setOtpStep(true)
-        setSecondsLeft(600)
-        toast.success(`Code sent to ${json.emailHint ?? data.email}`)
+        // TOTP windows are 30s — give the user 5 min total. Email path
+        // still gets 10 min as before.
+        setSecondsLeft(method === 'totp' ? 300 : 600)
+        if (method === 'totp') toast.success('Open Google Authenticator to get your code')
+        else toast.success(`Code sent to ${json.emailHint ?? data.email}`)
         return
       }
 
@@ -128,10 +140,19 @@ function LoginForm() {
     if (code.length !== 6) return
     setOtpLoading(true)
     try {
-      const res = await fetch('/api/auth/login/verify-otp', {
+      // Different endpoint per method. TOTP goes through the existing
+      // mfa/totp-verify (mode: 'challenge'); email OTP through our
+      // login/verify-otp built in this round.
+      const url = mfaMethod === 'totp'
+        ? '/api/auth/mfa/totp-verify'
+        : '/api/auth/login/verify-otp'
+      const body = mfaMethod === 'totp'
+        ? { token: code, challengeToken, mode: 'challenge' }
+        : { challengeToken, code }
+      const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken, code }),
+        body: JSON.stringify(body),
       })
       const json = await res.json()
       if (!res.ok) {
@@ -189,12 +210,17 @@ function LoginForm() {
     return (
       <div>
         <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 mb-4">
-          <Mail className="size-6 text-primary" />
+          {mfaMethod === 'totp' ? <ShieldCheck className="size-6 text-primary" /> : <Mail className="size-6 text-primary" />}
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Check your email</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {mfaMethod === 'totp' ? 'Authenticator code' : 'Check your email'}
+        </h1>
         <p className="text-muted-foreground mt-1 mb-6">
-          We sent a 6-digit code to <span className="font-medium text-foreground">{emailHint}</span>.
-          Enter it below to finish signing in.
+          {mfaMethod === 'totp' ? (
+            <>Open Google Authenticator and enter the 6-digit code shown next to <span className="font-medium text-foreground">{emailHint}</span>.</>
+          ) : (
+            <>We sent a 6-digit code to <span className="font-medium text-foreground">{emailHint}</span>. Enter it below to finish signing in.</>
+          )}
         </p>
 
         <div className="flex justify-center mb-4">
@@ -248,14 +274,16 @@ function LoginForm() {
           >
             ← Use a different email
           </button>
-          <button
-            type="button"
-            className="text-primary hover:underline disabled:opacity-50"
-            onClick={() => void resendOtp()}
-            disabled={resending}
-          >
-            {resending ? 'Sending…' : 'Resend code'}
-          </button>
+          {mfaMethod === 'email' && (
+            <button
+              type="button"
+              className="text-primary hover:underline disabled:opacity-50"
+              onClick={() => void resendOtp()}
+              disabled={resending}
+            >
+              {resending ? 'Sending…' : 'Resend code'}
+            </button>
+          )}
         </div>
 
         <p className="mt-6 text-center text-xs text-muted-foreground">

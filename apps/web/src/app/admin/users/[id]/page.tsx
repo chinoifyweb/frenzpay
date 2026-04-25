@@ -30,6 +30,7 @@ import {
   Phone,
   Globe,
   Calendar,
+  KeyRound,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -578,8 +579,54 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
   const [totpCode, setTotpCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Reset-2FA modal state
+  const [resetMfaOpen, setResetMfaOpen] = useState(false);
+  const [resetReason, setResetReason] = useState('');
+  const [resetDocs, setResetDocs] = useState(''); // newline-separated, parsed before send
+  const [resetTotp, setResetTotp] = useState('');
+  const [resetSubmitting, setResetSubmitting] = useState(false);
+
   const isSuspended = user.status === 'SUSPENDED';
   const isDeleted = user.status === 'DELETED';
+
+  async function submitResetMfa() {
+    if (!/^\d{6}$/.test(resetTotp)) {
+      toast.error('Enter your own 6-digit TOTP code');
+      return;
+    }
+    if (resetReason.trim().length < 30) {
+      toast.error('Describe what was verified in at least 30 characters');
+      return;
+    }
+    const docs = resetDocs.split('\n').map((s) => s.trim()).filter(Boolean);
+    if (docs.length === 0) {
+      toast.error('List at least one document or verification step');
+      return;
+    }
+    setResetSubmitting(true);
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/reset-mfa`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          totpCode: resetTotp,
+          reason: resetReason.trim(),
+          documentsReviewed: docs,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? `Reset failed (${res.status})`);
+      toast.success('Customer authenticator reset — they’ll re-enrol on next sign-in');
+      setResetMfaOpen(false);
+      setResetReason('');
+      setResetDocs('');
+      setResetTotp('');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Reset failed');
+    } finally {
+      setResetSubmitting(false);
+    }
+  }
 
   async function submitFreezeOrUnfreeze() {
     if (!modalMode) return;
@@ -686,6 +733,29 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
 
           <Separator />
 
+          {/* Reset customer's TOTP — for cases where the customer has lost
+              their phone and produced supporting documents to prove
+              identity. */}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Reset 2FA (Google Authenticator)</p>
+              <p className="text-xs text-muted-foreground">
+                Clears the customer&rsquo;s authenticator after they&rsquo;ve produced ID-proof. They&rsquo;ll fall back to email OTP on next sign-in and can re-enrol from Security.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setResetMfaOpen(true); setResetReason(''); setResetDocs(''); setResetTotp(''); }}
+              disabled={isDeleted}
+            >
+              <KeyRound className="mr-1.5 h-4 w-4" />
+              Reset 2FA
+            </Button>
+          </div>
+
+          <Separator />
+
           {/* Delete */}
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
@@ -706,6 +776,65 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Reset 2FA modal */}
+      <Dialog open={resetMfaOpen} onOpenChange={(o) => { if (!o) setResetMfaOpen(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset customer 2FA</DialogTitle>
+            <DialogDescription>
+              Use this only when the customer has produced documents proving their identity (selfie with ID, live video call, etc). Both your TOTP code and a document list are required for the audit trail.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="rm-reason">What was verified (min 30 chars)</Label>
+              <Textarea
+                id="rm-reason"
+                value={resetReason}
+                onChange={(e) => setResetReason(e.target.value)}
+                rows={3}
+                disabled={resetSubmitting}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rm-docs">Documents reviewed (one per line)</Label>
+              <Textarea
+                id="rm-docs"
+                value={resetDocs}
+                onChange={(e) => setResetDocs(e.target.value)}
+                rows={3}
+                disabled={resetSubmitting}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                e.g. &quot;Selfie with NIN — sent via WhatsApp 2026-04-25&quot; / &quot;Live video call confirming face matches KYC&quot;.
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="rm-totp">Your 6-digit TOTP code</Label>
+              <Input
+                id="rm-totp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={resetTotp}
+                onChange={(e) => setResetTotp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                className="font-mono tracking-widest text-center"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetMfaOpen(false)} disabled={resetSubmitting}>Cancel</Button>
+            <Button
+              onClick={submitResetMfa}
+              disabled={resetSubmitting || resetReason.trim().length < 30 || !/^\d{6}$/.test(resetTotp)}
+            >
+              {resetSubmitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              Reset authenticator
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Freeze / Unfreeze modal */}
       <Dialog

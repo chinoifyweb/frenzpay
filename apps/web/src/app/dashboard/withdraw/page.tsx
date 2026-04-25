@@ -128,6 +128,11 @@ export default function WithdrawPage() {
   // Submit
   const [submitting, setSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  // Authenticator-app code is required by /api/withdrawals — captured
+  // inside the confirm dialog and sent as X-Mfa-Token. Server returns
+  // 403 with `enrollRequired: true` if the customer hasn't set up TOTP.
+  const [totpCode, setTotpCode] = useState('');
+  const [totpEnrollRequired, setTotpEnrollRequired] = useState(false);
   const [stage, setStage] = useState<Stage>('form');
   const [submittedWithdrawal, setSubmittedWithdrawal] = useState<{
     id: string;
@@ -281,18 +286,23 @@ export default function WithdrawPage() {
       toast.error('Enter a valid USD amount');
       return;
     }
+    if (totpCode.length !== 6) {
+      toast.error('Enter the 6-digit code from your authenticator app');
+      return;
+    }
     setSubmitting(true);
     try {
-      // Mint a fresh idempotency key on each submit attempt. If the fetch
-      // throws mid-flight (network blip) and the user clicks Submit again,
-      // they'll get a NEW key — that's intentional, retries should be a
-      // conscious decision. The server-side unique constraint still
-      // dedupes against any actual successful prior post.
+      // Mint a fresh idempotency key on each submit attempt. The server-
+      // side unique constraint still dedupes against any successful prior
+      // post if the user clicks again after a fetch timeout.
       const res = await fetch('/api/withdrawals', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Idempotency-Key': crypto.randomUUID(),
+          // Authenticator code — required by /api/withdrawals.
+          // Email OTP is not acceptable for money movement.
+          'X-Mfa-Token': totpCode,
         },
         body: JSON.stringify({
           beneficiaryId: selectedBeneficiary.id,
@@ -301,7 +311,18 @@ export default function WithdrawPage() {
         }),
       });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? `Submission failed (${res.status})`);
+      if (!res.ok) {
+        // 403 + enrollRequired means the customer hasn't enrolled TOTP yet.
+        // Push them to /dashboard/security with a clear toast — don't
+        // confuse them with "wrong code".
+        if (res.status === 403 && json.enrollRequired) {
+          setTotpEnrollRequired(true);
+          throw new Error(
+            'Set up Google Authenticator before withdrawing — Security in your dashboard.',
+          );
+        }
+        throw new Error(json.error ?? `Submission failed (${res.status})`);
+      }
       setSubmittedWithdrawal({
         id: json.withdrawal.id,
         destAmountKobo: json.withdrawal.destAmountKobo,
@@ -311,9 +332,11 @@ export default function WithdrawPage() {
       toast.success('Withdrawal submitted for review');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Submission failed');
+      // Clear the code so the user has to type a fresh one — TOTP codes
+      // rotate every 30 seconds anyway.
+      setTotpCode('');
     } finally {
       setSubmitting(false);
-      setConfirmOpen(false);
     }
   }
 
@@ -700,6 +723,45 @@ export default function WithdrawPage() {
                 </p>
                 <p className="font-mono text-xs">{selectedBeneficiary.accountNumber}</p>
               </div>
+
+              {/* Authenticator code — required by the server. Email OTP
+                  is intentionally NOT accepted on this endpoint. */}
+              {totpEnrollRequired ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 p-3 space-y-2">
+                  <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                    Set up Google Authenticator first
+                  </p>
+                  <p className="text-xs text-amber-900/80 dark:text-amber-300/90">
+                    Withdrawals require an authenticator-app code. Email OTP isn’t enough for moving money.
+                  </p>
+                  <Link
+                    href="/dashboard/security"
+                    className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200 underline"
+                  >
+                    Open Security to enrol
+                    <ArrowRight className="h-3 w-3" />
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label htmlFor="totp-code" className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Authenticator code
+                  </Label>
+                  <Input
+                    id="totp-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="font-mono tracking-widest text-center"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Open Google Authenticator and copy the current 6-digit code for FrenzPay.
+                  </p>
+                </div>
+              )}
+
               <p className="text-xs text-muted-foreground">
                 Once you submit we hold the USD and an admin reviews the request within 24h.
                 The NGN releases to your bank after approval.
@@ -707,14 +769,16 @@ export default function WithdrawPage() {
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
+            <Button variant="outline" onClick={() => { setConfirmOpen(false); setTotpCode(''); setTotpEnrollRequired(false) }} disabled={submitting}>
               Cancel
             </Button>
-            <Button onClick={submitWithdrawal} disabled={submitting}>
-              {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-              Submit for review
-              <ArrowRight className="ml-1 h-4 w-4" />
-            </Button>
+            {!totpEnrollRequired && (
+              <Button onClick={submitWithdrawal} disabled={submitting || totpCode.length !== 6}>
+                {submitting && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                Submit for review
+                <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
