@@ -9,7 +9,7 @@
  */
 
 import * as OTPAuth from 'otpauth';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -85,11 +85,33 @@ export function generateBackupCodes(): { codes: string[]; hashes: string[] } {
 /**
  * Verify a submitted backup code against stored hashes.
  * Returns the index of the matched hash (for marking as used), or -1.
+ *
+ * Constant-time: every comparison runs through `timingSafeEqual` and the
+ * loop never short-circuits on a match. Without this, an attacker could
+ * brute-force a customer's backup codes by timing `findIndex(...)===`
+ * which both shortcuts on first match AND short-circuits inside the
+ * string equality check itself — total response latency would leak both
+ * which slot matched and how many leading characters of a wrong guess
+ * were correct. Both leaks are closed here.
  */
 export function verifyBackupCode(submitted: string, hashes: string[]): number {
   const submittedHash = createHash('sha256')
     .update(submitted.toLowerCase().replace(/\s+/g, ''))
-    .digest('hex');
+    .digest();
 
-  return hashes.findIndex((h) => h === submittedHash);
+  let matched = -1;
+  for (let i = 0; i < hashes.length; i++) {
+    let storedHex: string;
+    try { storedHex = hashes[i] as string; } catch { continue; }
+    if (typeof storedHex !== 'string' || storedHex.length !== 64) continue;
+    const stored = Buffer.from(storedHex, 'hex');
+    if (stored.length !== submittedHash.length) continue;
+    // timingSafeEqual is constant-time. We DON'T break on success —
+    // iterating the whole array keeps total runtime independent of
+    // which slot (if any) matched.
+    if (timingSafeEqual(stored, submittedHash) && matched === -1) {
+      matched = i;
+    }
+  }
+  return matched;
 }
