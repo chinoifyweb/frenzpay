@@ -83,6 +83,32 @@ export async function GET(req: NextRequest) {
     prisma.kycSubmission.count({ where }),
   ]);
 
+  // Pull the KYC_SUBMITTED audit row for this page in one shot — its
+  // metadata.livenessSource tells us whether the customer recorded live
+  // in the browser or uploaded a clip from their gallery via the
+  // fallback. Surface that to the admin so reviewers can weight the
+  // liveness check appropriately (uploaded clips are easier to fake and
+  // deserve a closer look).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const submissionIds = submissions.map((s: any) => s.id);
+  const submitLogs = submissionIds.length
+    ? await prisma.auditLog.findMany({
+        where: {
+          action: 'KYC_SUBMITTED',
+          resourceType: 'KycSubmission',
+          resourceId: { in: submissionIds },
+        },
+        select: { resourceId: true, metadata: true },
+      })
+    : [];
+  const livenessSourceById = new Map<string, 'recorded' | 'uploaded' | null>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of submitLogs as any[]) {
+    if (!row.resourceId) continue;
+    const src = row.metadata?.livenessSource;
+    livenessSourceById.set(row.resourceId, src === 'uploaded' || src === 'recorded' ? src : null);
+  }
+
   // Decrypt PII fields server-side for admin viewing. These never hit the
   // client as ciphertext — the plain name / doc number is what the admin
   // actually needs to compare against the ID photo.
@@ -105,6 +131,7 @@ export async function GET(req: NextRequest) {
     nin: undefined,
     passportNumber: undefined,
     driverLicenseNumber: undefined,
+    livenessSource: livenessSourceById.get(s.id) ?? null,
     // Serialise BigInt file sizes so JSON.stringify doesn't crash
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     documents: s.documents.map((d: any) => ({

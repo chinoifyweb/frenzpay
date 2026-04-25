@@ -52,7 +52,19 @@ const VALID_EMPLOYMENT = new Set([
 
 // ── Validation constants ───────────────────────────────────────────────────
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
-const ALLOWED_VIDEO_MIME = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+// Liveness can be either a clip recorded by the in-browser MediaRecorder
+// (always webm or mp4) OR a clip the customer uploaded from their gallery
+// when the camera is blocked at the OS/browser level. The upload path is
+// the fallback we offer customers who can't grant camera permission, so
+// the allow-list also covers what Android (3gpp) and certain Apple-export
+// flows (quicktime / matroska) tend to produce by default.
+const ALLOWED_VIDEO_MIME = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/3gpp',
+  'video/x-matroska',
+]);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;        // 10 MB per image
 const MAX_LIVENESS_BYTES = 25 * 1024 * 1024;     // 25 MB for liveness (video)
 
@@ -83,9 +95,11 @@ function validateFile(
   kind: 'image' | 'video',
 ): string | null {
   if (!file) return `${label} file is required`;
-  // Liveness is now video-only — a still photo doesn't prove the customer is
+  // Liveness is video-only — a still photo doesn't prove the customer is
   // live in front of their camera. The browser-side recorder produces a small
-  // webm/mp4 clip; anything else gets rejected here as a defense-in-depth.
+  // webm/mp4 clip; the upload-fallback also accepts mp4/3gp/mov/mkv from the
+  // gallery for customers whose browser can't open the camera. Defense-
+  // in-depth check.
   const allowed = kind === 'image' ? ALLOWED_IMAGE_MIME : ALLOWED_VIDEO_MIME;
   if (!allowed.has(file.type)) {
     return `${label}: unsupported file type ${file.type}`;
@@ -372,6 +386,11 @@ export async function POST(req: NextRequest) {
           sourceOfFunds,
           hasIdBack: !!idBackUpload,
           livenessMime: liveness!.type,
+          // The recorder names live clips `liveness-<ts>.{webm,mp4}` and
+          // gallery uploads `liveness-uploaded-<ts>.<ext>`. Capturing the
+          // source here so the admin reviewer + audit trail can tell the
+          // two apart even though both go through this same endpoint.
+          livenessSource: liveness!.name.startsWith('liveness-uploaded') ? 'uploaded' : 'recorded',
         },
       },
     });

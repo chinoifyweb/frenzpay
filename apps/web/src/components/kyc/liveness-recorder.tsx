@@ -27,14 +27,27 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle, Camera, RotateCcw, Square, Video as VideoIcon, Check } from 'lucide-react'
+import { AlertCircle, Camera, RotateCcw, Square, Upload, Video as VideoIcon, Check } from 'lucide-react'
 
 const RECORD_SECONDS_MAX = 5
 const RECORD_SECONDS_MIN = 3
 const VIDEO_BITS_PER_SECOND = 500_000  // ~500 kbps → ~200..400 KB / clip
+
+/** Mime types the server accepts for the liveness slot. Mirrors
+ *  ALLOWED_VIDEO_MIME in apps/web/src/app/api/kyc/t2/route.ts. */
+const ALLOWED_UPLOAD_MIME = [
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/3gpp',         // common Android default
+  'video/x-matroska',
+]
+
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024  // matches MAX_LIVENESS_BYTES on server
 
 interface Props {
   label: string
@@ -56,6 +69,7 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const tickerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const uploadInputRef = useRef<HTMLInputElement | null>(null)
 
   const [stage, setStage] = useState<Stage>(file ? 'review' : 'idle')
   const [error, setError] = useState<string | null>(null)
@@ -63,6 +77,12 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
   const [recordedSeconds, setRecordedSeconds] = useState(0)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [supported, setSupported] = useState<boolean>(true)
+  // Tracks whether the current file in review came from a live recording
+  // or a fallback upload. Used to (a) label the preview and (b) drive the
+  // filename prefix that the admin viewer uses to distinguish the two.
+  const [source, setSource] = useState<'recorded' | 'uploaded' | null>(
+    file ? (file.name.startsWith('liveness-uploaded') ? 'uploaded' : 'recorded') : null,
+  )
 
   // ── Capability check on mount ────────────────────────────────────────────
   useEffect(() => {
@@ -232,6 +252,7 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       // Hand the file up to the parent and tear down the live stream;
       // the review stage doesn't need the camera open.
       onChange(f)
+      setSource('recorded')
       stopEverything()
       setStage('review')
     }
@@ -269,8 +290,47 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
 
   function rerecord() {
     onChange(null)
+    setSource(null)
     setStage('idle')
     setRecordedSeconds(0)
+    if (uploadInputRef.current) uploadInputRef.current.value = ''
+  }
+
+  /** Fallback path for customers whose browser flat-out won't let us open
+   *  the camera (Brave on Android, locked-down corporate devices, etc.).
+   *  Validates the chosen file against the same mime allow-list + size cap
+   *  the server enforces, then short-circuits straight into the review
+   *  stage. The filename is renamed with an `liveness-uploaded-` prefix so
+   *  the admin reviewer can distinguish uploaded clips from live ones. */
+  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = e.target.files?.[0]
+    if (!picked) return
+    setError(null)
+
+    const mime = (picked.type || '').split(';')[0]?.trim().toLowerCase() || ''
+    if (mime && !ALLOWED_UPLOAD_MIME.includes(mime)) {
+      toast.error(`Unsupported video format (${mime || 'unknown'}). Use MP4, WebM, MOV, MKV, or 3GP.`)
+      e.target.value = ''
+      return
+    }
+    if (picked.size > MAX_UPLOAD_BYTES) {
+      const mb = (picked.size / (1024 * 1024)).toFixed(1)
+      toast.error(`Video too large (${mb} MB). Keep it under 25 MB — trim to 5–10 seconds.`)
+      e.target.value = ''
+      return
+    }
+
+    // Tear down the live camera stream if one was running — we're skipping
+    // straight to review.
+    stopEverything()
+
+    const ext = (picked.name.split('.').pop() || 'mp4').toLowerCase()
+    const filename = `liveness-uploaded-${Date.now()}.${ext}`
+    const renamed = new File([picked], filename, { type: mime || picked.type || 'video/mp4' })
+    onChange(renamed)
+    setSource('uploaded')
+    setStage('review')
+    e.target.value = ''
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -295,7 +355,7 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       <div className="flex items-center justify-between">
         <Label>{label}</Label>
         <span className="text-xs text-muted-foreground">
-          live recording · max {RECORD_SECONDS_MAX} s
+          record live · or upload a clip
         </span>
       </div>
       <p className="text-xs text-muted-foreground">{hint}</p>
@@ -491,18 +551,39 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
             Stop
           </Button>
         )}
+        {/* Upload-video fallback. Available across every pre-review stage
+            so a customer whose browser blocks the camera entirely can
+            still complete KYC by sending a clip from their gallery. */}
+        {(stage === 'idle' || stage === 'preview' || stage === 'recording') && (
+          <Button
+            onClick={() => uploadInputRef.current?.click()}
+            type="button"
+            variant="outline"
+            className="gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            Upload video instead
+          </Button>
+        )}
         {stage === 'review' && (
           <>
             <span className="inline-flex items-center gap-1.5 rounded-md bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
               <Check className="h-3 w-3" />
-              Recorded — preview above
+              {source === 'uploaded' ? 'Uploaded — preview above' : 'Recorded — preview above'}
             </span>
             <Button onClick={rerecord} type="button" variant="outline" className="gap-2">
               <RotateCcw className="h-4 w-4" />
-              Re-record
+              {source === 'uploaded' ? 'Replace' : 'Re-record'}
             </Button>
           </>
         )}
+        <input
+          ref={uploadInputRef}
+          type="file"
+          accept={ALLOWED_UPLOAD_MIME.join(',')}
+          className="sr-only"
+          onChange={handleUpload}
+        />
       </div>
 
       {stage === 'preview' && (

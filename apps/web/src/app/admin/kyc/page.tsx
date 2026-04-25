@@ -80,6 +80,11 @@ interface KYCSubmission {
   docKind: 'nin' | 'passport' | 'drivers_license' | null
   purposeOfAccount: string | null
   sourceOfFunds: string | null
+  /** 'recorded' = captured live by the in-browser recorder.
+   *  'uploaded' = the customer hit the fallback and uploaded a clip from
+   *  their gallery (camera blocked / not available). Reviewers should
+   *  treat uploads with extra scrutiny. */
+  livenessSource: 'recorded' | 'uploaded' | null
   user: KYCUser
   documents: KYCDocument[]
 }
@@ -586,9 +591,11 @@ export default function KYCPage() {
                       const isImage = doc.mimeType.startsWith('image/')
                       const isVideo = doc.mimeType.startsWith('video/')
                       const src = `/api/admin/kyc/document/${doc.id}`
+                      const isLiveness = doc.docType === 'liveness'
+                      const livenessSource = isLiveness ? selectedSubmission.livenessSource : null
                       return (
                         <div key={doc.id} className="overflow-hidden rounded-lg border bg-muted/20">
-                          <div className="aspect-video bg-black/5 dark:bg-black/20 flex items-center justify-center">
+                          <div className="aspect-video bg-black/5 dark:bg-black/20 flex items-center justify-center relative">
                             {isImage && (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={src} alt={label} className="max-h-full max-w-full object-contain" />
@@ -599,10 +606,31 @@ export default function KYCPage() {
                             {!isImage && !isVideo && (
                               <FileText className="h-8 w-8 text-muted-foreground" />
                             )}
+                            {isLiveness && livenessSource && (
+                              <span
+                                className={`absolute top-2 left-2 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider shadow ${
+                                  livenessSource === 'uploaded'
+                                    ? 'bg-amber-500 text-white'
+                                    : 'bg-emerald-600 text-white'
+                                }`}
+                                title={
+                                  livenessSource === 'uploaded'
+                                    ? 'Customer uploaded this clip from their device — review extra carefully.'
+                                    : 'Captured live by the in-browser recorder.'
+                                }
+                              >
+                                {livenessSource === 'uploaded' ? 'Uploaded' : 'Live'}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
                             <div className="min-w-0">
-                              <p className="truncate font-medium">{label}</p>
+                              <p className="truncate font-medium">
+                                {label}
+                                {isLiveness && livenessSource === 'uploaded' && (
+                                  <span className="ml-1.5 font-normal text-amber-600 dark:text-amber-400">(uploaded)</span>
+                                )}
+                              </p>
                               <p className="truncate text-muted-foreground">
                                 {doc.mimeType} &middot; {formatBytes(doc.fileSizeBytes)}
                               </p>
