@@ -88,6 +88,13 @@ const nextConfig: NextConfig = {
       {
         source: "/(.*)",
         headers: [
+          // Cap the LSCache edge TTL to 60s for non-API routes. Without this
+          // the LiteSpeed front-end honours Next.js's default
+          // `s-maxage=31536000` for static pages and serves stale HTML for a
+          // year — public homepage edits don't reach visitors until we
+          // manually flush. 60s keeps the perf benefit while making deploys
+          // visible within a minute.
+          { key: "X-LiteSpeed-Cache-Control", value: "public, max-age=60" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
