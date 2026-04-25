@@ -41,7 +41,9 @@ interface ExternalAccount {
 interface AccountRequest {
   id: string
   currency: string
-  status: 'PENDING' | 'APPROVED' | 'REJECTED'
+  // PROCESSING = admin atomically claimed the row to start provisioning;
+  // from the customer's POV it's still "in review", same UX as PENDING.
+  status: 'PENDING' | 'PROCESSING' | 'APPROVED' | 'REJECTED'
   rejectionReason: string | null
   submittedAt: string
 }
@@ -88,7 +90,7 @@ export default function AccountsPage() {
     }
     for (const r of requests) {
       if (m[r.currency] === 'approved') continue // accepted wins
-      if (r.status === 'PENDING') m[r.currency] = 'pending'
+      if (r.status === 'PENDING' || r.status === 'PROCESSING') m[r.currency] = 'pending'
       else if (r.status === 'REJECTED' && m[r.currency] === 'none') m[r.currency] = 'rejected'
     }
     return m

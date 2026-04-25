@@ -93,6 +93,23 @@ export async function PATCH(
     );
   }
 
+  // Atomic claim: flip PENDING → PROCESSING before doing any external
+  // call, conditional on the row still being PENDING. If two admins
+  // click Approve at the same time only one will see updated_count = 1
+  // here; the other gets 0 and bails with 409. Without this lock, both
+  // requests could pass the read above, both call Graph, and the
+  // customer ends up with two virtual accounts on the rail.
+  const claim = await prisma.accountRequest.updateMany({
+    where: { id, status: 'PENDING' },
+    data: { status: 'PROCESSING' },
+  });
+  if (claim.count !== 1) {
+    return NextResponse.json(
+      { error: 'Another admin is already reviewing this request.' },
+      { status: 409 },
+    );
+  }
+
   const displayName =
     `${request.user.firstName ?? ''} ${request.user.lastName ?? ''}`.trim() ||
     request.user.email;
@@ -212,16 +229,26 @@ export async function PATCH(
   }
 
   if (provisionError || !externalAccountId) {
+    // Revert the PROCESSING claim so the next admin retry can pick the
+    // request back up. Without this the row would be stuck in
+    // PROCESSING forever after any rail-side failure.
+    await prisma.accountRequest.updateMany({
+      where: { id, status: 'PROCESSING' },
+      data: { status: 'PENDING' },
+    }).catch((err) => logger.error(
+      { requestId: id, err: err instanceof Error ? err.message : err },
+      'failed to revert PROCESSING → PENDING after provisioning error',
+    ));
     logger.error(
       { requestId: id, userId: request.userId, currency: request.currency, rail, provisionError },
-      'account-request provisioning failed; request stays PENDING for retry',
+      'account-request provisioning failed; request reverted to PENDING for retry',
     );
     return NextResponse.json(
       {
         error:
           'Provisioning failed: ' +
           (provisionError ?? 'no account id returned') +
-          '. The request is still PENDING — fix the underlying issue and retry.',
+          '. The request is back to PENDING — fix the underlying issue and retry.',
       },
       { status: 502 },
     );

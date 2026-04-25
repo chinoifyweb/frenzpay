@@ -127,10 +127,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Idempotency: if there's already a PENDING request for this currency,
-  // return it instead of creating a duplicate.
+  // Idempotency: if there's already a PENDING (or PROCESSING — admin
+  // is actively approving) request for this currency, return it
+  // instead of creating a duplicate.
   const existingPending = await prisma.accountRequest.findFirst({
-    where: { userId: user.id, currency, status: 'PENDING' },
+    where: { userId: user.id, currency, status: { in: ['PENDING', 'PROCESSING'] } },
     select: { id: true, status: true, submittedAt: true },
   });
   if (existingPending) {

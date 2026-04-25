@@ -98,6 +98,9 @@ export default function RequestAccountPage() {
   const label = CURRENCY_LABEL[currency] ?? currency
 
   const [step, setStep] = useState<1 | 2 | 3>(1)
+  // PROCESSING is the brief in-flight state when an admin's atomic
+  // approve claim is mid-call — the customer's UX should still be
+  // "Pending review" during it.
   const [existingRequestStatus, setExistingRequestStatus] = useState<'PENDING' | 'APPROVED' | 'REJECTED' | null>(null)
   const [loadingExisting, setLoadingExisting] = useState(true)
 
@@ -120,7 +123,9 @@ export default function RequestAccountPage() {
           router.replace('/dashboard/accounts')
           return
         }
-        if (forCurrency?.status === 'PENDING') {
+        // PROCESSING surfaces to the customer as "Pending review" — same
+        // UX, just means an admin is actively reviewing right now.
+        if (forCurrency?.status === 'PENDING' || forCurrency?.status === 'PROCESSING') {
           setExistingRequestStatus('PENDING')
           setStep(3)
         }

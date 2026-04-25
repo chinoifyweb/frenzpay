@@ -15,7 +15,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 
-const VALID_STATUSES = new Set(['PENDING', 'APPROVED', 'REJECTED']);
+const VALID_STATUSES = new Set(['PENDING', 'PROCESSING', 'APPROVED', 'REJECTED']);
 const VALID_CURRENCIES = new Set(['USD', 'EUR', 'NGN']);
 
 export async function GET(req: NextRequest) {
