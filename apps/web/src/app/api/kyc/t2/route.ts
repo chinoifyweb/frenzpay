@@ -52,21 +52,15 @@ const VALID_EMPLOYMENT = new Set([
 
 // ── Validation constants ───────────────────────────────────────────────────
 const ALLOWED_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
-// Liveness can be either a clip recorded by the in-browser MediaRecorder
-// (always webm or mp4) OR a clip the customer uploaded from their gallery
-// when the camera is blocked at the OS/browser level. The upload path is
-// the fallback we offer customers who can't grant camera permission, so
-// the allow-list also covers what Android (3gpp) and certain Apple-export
-// flows (quicktime / matroska) tend to produce by default.
-const ALLOWED_VIDEO_MIME = new Set([
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
-  'video/3gpp',
-  'video/x-matroska',
-]);
+// Liveness is upload-only — the customer records on their phone's
+// native camera app. Phone video formats vary wildly (iPhone .mov,
+// Android .3gp / .mkv, Samsung .avi, screen-recorders .flv, etc.) and a
+// strict allow-list kept rejecting perfectly legitimate clips, so we
+// accept ANY video/* mime here. The 50 MB size cap is the actual abuse
+// defence; manual reviewer is the actual authenticity defence. Image
+// uploads still fail because their mime doesn't start with `video/`.
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;        // 10 MB per image
-const MAX_LIVENESS_BYTES = 25 * 1024 * 1024;     // 25 MB for liveness (video)
+const MAX_LIVENESS_BYTES = 50 * 1024 * 1024;     // 50 MB for liveness (video)
 
 // Voter's card (PVC) is added to match the doc types Graph accepts at
 // https://usegraph.readme.io/reference/upgrade-person-kyc — customers who
@@ -101,14 +95,15 @@ function validateFile(
   kind: 'image' | 'video',
 ): string | null {
   if (!file) return `${label} file is required`;
-  // Liveness is video-only — a still photo doesn't prove the customer is
-  // live in front of their camera. The browser-side recorder produces a small
-  // webm/mp4 clip; the upload-fallback also accepts mp4/3gp/mov/mkv from the
-  // gallery for customers whose browser can't open the camera. Defense-
-  // in-depth check.
-  const allowed = kind === 'image' ? ALLOWED_IMAGE_MIME : ALLOWED_VIDEO_MIME;
-  if (!allowed.has(file.type)) {
-    return `${label}: unsupported file type ${file.type}`;
+  // Image slots stay strict (allow-list of jpeg/png/webp/pdf). Video
+  // slots accept ANY video/* mime — phone formats are too varied to
+  // enumerate and the manual review catches anything dodgy.
+  const fileMime = (file.type || '').toLowerCase();
+  const ok = kind === 'image'
+    ? ALLOWED_IMAGE_MIME.has(fileMime)
+    : fileMime.startsWith('video/');
+  if (!ok) {
+    return `${label}: unsupported file type ${file.type || '(no mime)'}`;
   }
   const cap = kind === 'image' ? MAX_IMAGE_BYTES : MAX_LIVENESS_BYTES;
   if (file.size > cap) {

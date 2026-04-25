@@ -97,20 +97,17 @@ const SOURCES = [
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-// Liveness is now an upload-only flow — customers were running into
-// camera-permission walls on Android Brave / locked-down browsers and
-// bouncing off KYC entirely. The customer records on their own using
-// their phone's camera app and uploads the clip; admin matches it
-// manually against the selfie + ID. Mirrors the server allow-list in
-// /api/kyc/t2 (ALLOWED_VIDEO_MIME).
-const VIDEO_TYPES = [
-  'video/mp4',
-  'video/webm',
-  'video/quicktime',
-  'video/3gpp',
-  'video/x-matroska',
-]
-const MAX_VIDEO_BYTES = 25 * 1024 * 1024
+// Liveness is upload-only — the customer records on their phone's native
+// camera app and uploads the clip; an admin matches it manually against
+// the selfie + ID. We accept ANY video format the browser tags with a
+// video/* mime — phone formats vary wildly (iPhone .mov, Android .3gp /
+// .mkv, Samsung .avi, screen-recorders .flv, etc.) and customers were
+// hitting "format not allowed" errors on perfectly legitimate clips.
+// Image uploads are still blocked: handlePick rejects anything whose
+// mime doesn't start with video/. The 50 MB size cap is the real
+// abuse defence; manual reviewer is the real authenticity defence.
+const VIDEO_ACCEPT = ['video/*']
+const MAX_VIDEO_BYTES = 50 * 1024 * 1024
 
 // Nigerian state 2-letter codes as expected by Graph's address object.
 const NG_STATES = [
@@ -756,8 +753,8 @@ function KycForm({
           </div>
           <FileUpload
             label="Liveness video"
-            hint="Selfie video saying your name + today’s date, with head turns left/right/up. MP4, MOV, WebM, MKV, or 3GP."
-            accept={VIDEO_TYPES}
+            hint="Selfie video of you saying your name + today’s date with head turns left/right/up. Any video format your phone records — pick straight from your gallery."
+            accept={VIDEO_ACCEPT}
             maxBytes={MAX_VIDEO_BYTES}
             file={liveness}
             onChange={setLiveness}
@@ -822,23 +819,50 @@ function FileUpload({
   function handlePick(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null
     if (!f) return
-    // Some Android galleries strip the mime on picked files. Fall back to
-    // the extension if the mime is missing — but never if the mime is
-    // present-and-wrong. This stops images sneaking into the video slot
-    // (they'd have a real image/* mime that would fail the explicit
-    // check) while still letting through 3GP / MKV gallery picks.
+    // Some Android galleries strip the mime on picked files. Fall back
+    // to the extension when the mime is missing — but never override a
+    // mime that IS set, so an image/jpeg can't sneak past a video slot
+    // just because of a generous extension table.
     const mime = (f.type || '').toLowerCase()
     const ext = (f.name.split('.').pop() || '').toLowerCase()
     const EXT_TO_MIME: Record<string, string> = {
+      // Images
       jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf',
-      mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm',
-      mov: 'video/quicktime', qt: 'video/quicktime', mkv: 'video/x-matroska',
+      // Videos — every phone-recorded format we've actually seen
+      mp4: 'video/mp4', m4v: 'video/x-m4v',
+      mov: 'video/quicktime', qt: 'video/quicktime',
+      webm: 'video/webm',
+      mkv: 'video/x-matroska',
       '3gp': 'video/3gpp', '3gpp': 'video/3gpp',
+      '3g2': 'video/3gpp2', '3gpp2': 'video/3gpp2',
+      avi: 'video/x-msvideo',
+      wmv: 'video/x-ms-wmv', asf: 'video/x-ms-asf',
+      mpeg: 'video/mpeg', mpg: 'video/mpeg', mpe: 'video/mpeg',
+      ogv: 'video/ogg', ogg: 'video/ogg',
+      flv: 'video/x-flv',
+      ts: 'video/mp2t', m2ts: 'video/mp2t',
     }
-    const inferred = EXT_TO_MIME[ext]
-    const effective = mime || inferred || ''
-    if (!effective || !accept.includes(effective)) {
-      toast.error(`${label}: ${mime || `.${ext}` || 'this file'} is not allowed.`)
+    const effective = mime || EXT_TO_MIME[ext] || ''
+
+    // Two acceptance paths:
+    //   1. Slot uses an explicit allow-list (image slots) → effective
+    //      mime must be on the list. Strict, so badguys can't slip an
+    //      image renamed to .jpg into the ID/selfie/PoA slots.
+    //   2. Slot uses `video/*` (the liveness slot) → ANY video subtype
+    //      passes. Phone formats vary wildly and a strict allow-list
+    //      kept rejecting legitimate clips. Image mimes still fail
+    //      because they don't start with `video/`.
+    const wantsAnyVideo = accept.includes('video/*')
+    const ok = wantsAnyVideo
+      ? effective.startsWith('video/')
+      : accept.includes(effective)
+    if (!effective || !ok) {
+      const what = mime || (ext ? `.${ext}` : 'this file')
+      toast.error(
+        wantsAnyVideo
+          ? `${label}: please pick a video (${what} isn’t a video file).`
+          : `${label}: ${what} is not allowed.`,
+      )
       e.target.value = ''
       return
     }
