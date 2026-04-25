@@ -67,20 +67,32 @@ export async function GET(
     return NextResponse.json({ error: 'Could not retrieve the document.' }, { status: 500 });
   }
 
-  // Audit — who looked at whose document
-  await prisma.auditLog.create({
-    data: {
-      userId: session.userId,
-      action: 'ADMIN_KYC_DOC_VIEWED',
-      resourceType: 'KycDocument',
-      resourceId: doc.id,
-      metadata: {
+  // Audit — who looked at whose document. Goes to admin_audit_logs (not the
+  // customer-facing audit_logs table) because session.userId is an
+  // AdminUser.id, which has no FK in the user-side audit_logs.user_id
+  // column. Wrapped in try/catch so an audit-write failure can never break
+  // the document fetch — the admin still gets the bytes; ops just lose
+  // one log line.
+  try {
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: session.userId,
+        action: 'ADMIN_KYC_DOC_VIEWED',
+        resourceType: 'KycDocument',
+        resourceId: doc.id,
         targetUserId: doc.submission.userId,
-        submissionId: doc.submissionId,
-        docType: doc.docType,
+        metadata: {
+          submissionId: doc.submissionId,
+          docType: doc.docType,
+        },
       },
-    },
-  });
+    });
+  } catch (err) {
+    logger.warn(
+      { docId, err: err instanceof Error ? err.message : err },
+      'KYC doc-view audit write failed (non-fatal)',
+    );
+  }
 
   return new NextResponse(new Uint8Array(plaintext), {
     status: 200,

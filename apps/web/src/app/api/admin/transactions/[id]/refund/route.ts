@@ -135,21 +135,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Failed to post refund transaction.' }, { status: 500 });
   }
 
-  await prisma.auditLog.create({
-    data: {
-      userId: session.userId,
-      action: 'ADMIN_TRANSACTION_REFUNDED',
-      resourceType: 'Transaction',
-      resourceId: id,
-      metadata: {
-        originalTransactionId: id,
-        refundTransactionId: refundTx.id,
-        amountMinor: (original.amount as unknown as bigint).toString(),
-        currency: original.currency,
-        reason: parsed.data.reason,
+  // adminAuditLog (not auditLog) — session.userId is an AdminUser.id and
+  // would FK-fail against the customer-side audit_logs.user_id column.
+  // Try/catch so an audit failure never undoes a successful refund post.
+  try {
+    await prisma.adminAuditLog.create({
+      data: {
+        adminId: session.userId,
+        action: 'ADMIN_TRANSACTION_REFUNDED',
+        resourceType: 'Transaction',
+        resourceId: id,
+        targetUserId: original.initiatorUserId ?? undefined,
+        metadata: {
+          originalTransactionId: id,
+          refundTransactionId: refundTx.id,
+          amountMinor: (original.amount as unknown as bigint).toString(),
+          currency: original.currency,
+          reason: parsed.data.reason,
+        },
       },
-    },
-  });
+    });
+  } catch (err) {
+    logger.warn(
+      { id, err: err instanceof Error ? err.message : err },
+      'admin refund audit write failed (non-fatal — refund itself succeeded)',
+    );
+  }
 
   logger.warn(
     { adminId: session.userId, originalTxId: id, refundTxId: refundTx.id },
