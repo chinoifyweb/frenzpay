@@ -168,7 +168,11 @@ export default function AccountsPage() {
                           ? 'Application under review — usually under 24 hours.'
                           : state === 'rejected'
                             ? 'Previous application was declined — you can reapply.'
-                            : `Receive payments in ${c.code} from anywhere in the world.`}
+                            : c.code === 'NGN'
+                              ? 'Receive and send money to any Nigerian bank account, instantly.'
+                              : c.code === 'EUR'
+                                ? 'Receive EUR via SEPA from anywhere in Europe.'
+                                : 'Receive USD via ACH or wire from anywhere in the world.'}
                       </p>
                     </div>
                   </div>

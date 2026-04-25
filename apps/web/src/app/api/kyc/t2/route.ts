@@ -131,6 +131,7 @@ export async function POST(req: NextRequest) {
   const purposeOfAccount = (formData.get('purposeOfAccount')?.toString() ?? '').trim().toLowerCase();
   const sourceOfFunds = (formData.get('sourceOfFunds')?.toString() ?? '').trim().toLowerCase();
   const bvn = (formData.get('bvn')?.toString() ?? '').trim();
+  const dob = (formData.get('dob')?.toString() ?? '').trim();
 
   // Address
   const addressLine1 = (formData.get('addressLine1')?.toString() ?? '').trim();
@@ -190,6 +191,30 @@ export async function POST(req: NextRequest) {
   // BVN validation (optional on submission but strongly recommended)
   if (bvn && !/^\d{11}$/.test(bvn)) {
     return NextResponse.json({ error: 'BVN must be exactly 11 digits.' }, { status: 422 });
+  }
+
+  // DOB validation. Required because Graph rejects USD provisioning
+  // without it ("Missing fields required by Graph: dob"). We enforce
+  // YYYY-MM-DD format + 18+ here in addition to the in-form check.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+    return NextResponse.json({ error: 'Enter your date of birth.' }, { status: 422 });
+  }
+  const dobDate = new Date(dob + 'T00:00:00Z');
+  if (Number.isNaN(dobDate.getTime())) {
+    return NextResponse.json({ error: 'That date of birth isn\'t valid.' }, { status: 422 });
+  }
+  const eighteenYearsAgo = new Date();
+  eighteenYearsAgo.setUTCFullYear(eighteenYearsAgo.getUTCFullYear() - 18);
+  if (dobDate > eighteenYearsAgo) {
+    return NextResponse.json(
+      { error: 'You must be at least 18 to open an account.' },
+      { status: 422 },
+    );
+  }
+  // Sanity-check the lower bound — anything before 1900 is almost
+  // certainly a typo and Graph would reject it anyway.
+  if (dobDate < new Date('1900-01-01T00:00:00Z')) {
+    return NextResponse.json({ error: 'That date of birth isn\'t valid.' }, { status: 422 });
   }
 
   // Background info validation
@@ -285,6 +310,11 @@ export async function POST(req: NextRequest) {
   const encryptedName = encryptField(fullLegalName, session.userId);
   const encryptedBvn = bvn ? encryptField(bvn, session.userId) : null;
   const bvnBlindIdx = bvn ? blindIndex(bvn) : null;
+  // DOB is also encrypted on the user row (User.dob is JSONB
+  // CipherPayload). Graph sync decrypts it back when sending the
+  // /person payload upstream. Encryption context = userId so a leaked
+  // ciphertext can't be moved to another row.
+  const encryptedDob = encryptField(dob, session.userId);
 
   // ── BVN duplicate-account check ──────────────────────────────────────────
   //
@@ -406,6 +436,8 @@ export async function POST(req: NextRequest) {
         city: encryptedCity as any,
         addressState,
         postalCode: encryptedPostal as any,
+        // DOB encrypted JSONB — Graph sync decrypts to send upstream.
+        dob: encryptedDob as any,
         // Ensure a country is set for Graph — default NG if not already set.
         country: 'NG',
       },

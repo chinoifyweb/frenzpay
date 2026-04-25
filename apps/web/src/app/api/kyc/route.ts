@@ -65,6 +65,7 @@ export async function GET() {
       city: true,
       addressState: true,
       postalCode: true,
+      dob: true,
     },
   });
 
@@ -156,6 +157,7 @@ export async function GET() {
           lastRow.expectedMonthlyInflowCents !== null
             ? lastRow.expectedMonthlyInflowCents.toString()
             : null,
+        dob: tryDecrypt(user.dob, ctx),
         addressLine1: tryDecrypt(user.addressLine1, ctx),
         addressLine2: tryDecrypt(user.addressLine2, ctx),
         city: tryDecrypt(user.city, ctx),

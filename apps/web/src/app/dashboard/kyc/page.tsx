@@ -164,10 +164,11 @@ type KycState = 'loading' | 'not_started' | 'pending' | 'approved' | 'rejected'
 
 interface RejectionTemplate { code: string; customerMessage: string; actions: string[] }
 interface PrefillData {
-  docKind: 'nin' | 'passport' | 'drivers_license' | null
+  docKind: 'nin' | 'passport' | 'drivers_license' | 'voters_card' | null
   docNumber: string | null
   fullLegalName: string | null
   bvn: string | null
+  dob: string | null            // YYYY-MM-DD
   sourceOfFunds: string | null
   purposeOfAccount: string | null
   employmentStatus: string | null
@@ -414,6 +415,13 @@ function KycForm({
     .filter(Boolean)
     .join(' ')
   const [bvn, setBvn] = useState(prefill?.bvn ?? '')
+  // Date of birth — REQUIRED by Graph for USD virtual account
+  // provisioning. Without this, admin approval succeeds but the
+  // downstream provisioning call returns "Missing fields required by
+  // Graph: dob" and the admin has to flip the request back to PENDING.
+  // Collect it as YYYY-MM-DD; server validates 18+ and stores
+  // encrypted on the user row so Graph sync can read it later.
+  const [dob, setDob] = useState(prefill?.dob ?? '')
   const [purposeOfAccount, setPurposeOfAccount] = useState(prefill?.purposeOfAccount ?? '')
   const [sourceOfFunds, setSourceOfFunds] = useState(prefill?.sourceOfFunds ?? '')
 
@@ -442,11 +450,23 @@ function KycForm({
 
   const requiresBack = ID_TYPES.find(t => t.value === docType)?.requiresBack ?? false
 
+  // 18+ check on DOB. Graph rejects under-18s anyway and downstream
+  // compliance requires it; bouncing in-form is a better UX than waiting
+  // for the admin to spot it.
+  const dobLooksValid = /^\d{4}-\d{2}-\d{2}$/.test(dob) && (() => {
+    const d = new Date(dob + 'T00:00:00Z')
+    if (isNaN(d.getTime())) return false
+    const eighteenYearsAgo = new Date()
+    eighteenYearsAgo.setUTCFullYear(eighteenYearsAgo.getUTCFullYear() - 18)
+    return d <= eighteenYearsAgo
+  })()
+
   const canSubmit =
     docNumber.trim().length >= 5 &&
     firstName.trim().length >= 2 &&
     lastName.trim().length >= 2 &&
     fullLegalName.length >= 4 &&
+    dobLooksValid &&
     !!purposeOfAccount &&
     !!sourceOfFunds &&
     addressLine1.trim().length >= 4 &&
@@ -477,6 +497,7 @@ function KycForm({
       fd.append('firstName', firstName.trim())
       fd.append('middleName', middleName.trim())
       fd.append('lastName', lastName.trim())
+      fd.append('dob', dob)
       if (bvn.trim()) fd.append('bvn', bvn.trim())
       fd.append('purposeOfAccount', purposeOfAccount)
       fd.append('sourceOfFunds', sourceOfFunds)
@@ -595,19 +616,42 @@ function KycForm({
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="bvn">BVN (Bank Verification Number)</Label>
-          <Input
-            id="bvn"
-            value={bvn}
-            onChange={(e) => setBvn(e.target.value.replace(/\D/g, '').slice(0, 11))}
-            className="font-mono"
-            maxLength={11}
-            autoComplete="off"
-          />
-          <p className="text-xs text-muted-foreground">
-            Required for NGN payouts. Dial *565*0# from a phone registered to your bank to retrieve.
-          </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="bvn">BVN (Bank Verification Number)</Label>
+            <Input
+              id="bvn"
+              value={bvn}
+              onChange={(e) => setBvn(e.target.value.replace(/\D/g, '').slice(0, 11))}
+              className="font-mono"
+              maxLength={11}
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Required for NGN payouts. Dial *565*0# from a phone registered to your bank to retrieve.
+            </p>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="dob">Date of birth</Label>
+            <Input
+              id="dob"
+              type="date"
+              value={dob}
+              onChange={(e) => setDob(e.target.value)}
+              max={(() => {
+                // 18 years ago today, so the picker can't pick under-18
+                const d = new Date()
+                d.setFullYear(d.getFullYear() - 18)
+                return d.toISOString().split('T')[0]
+              })()}
+              autoComplete="bday"
+            />
+            <p className="text-xs text-muted-foreground">
+              {dob && !dobLooksValid
+                ? <span className="text-red-600">You must be at least 18 to open an account.</span>
+                : 'Required for USD virtual account compliance. Must match your ID.'}
+            </p>
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

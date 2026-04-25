@@ -143,6 +143,7 @@ export async function requireRole(
   return result;
 }
 
+
 // ─── Delete / Revoke ──────────────────────────────────────────────────────────
 
 export async function deleteSession(sid: string, userId: string): Promise<void> {

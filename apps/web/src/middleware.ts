@@ -99,6 +99,18 @@ export async function middleware(request: NextRequest) {
 
   const isAuthenticated = session !== null;
 
+  // ── API routes: short-circuit auth with 401 JSON ─────────────────────────
+  //
+  // requireSession() inside route handlers calls redirect('/login') when
+  // there's no session. For API routes, that becomes a 307 → /login,
+  // the browser fetch follows it, gets HTML, and tries to parse it as
+  // JSON — surfacing as "Unexpected token '<' ... is not valid JSON" in
+  // the admin UI. Catch unauthenticated API hits here and return a
+  // proper 401 JSON instead so the client can handle gracefully.
+  if (pathname.startsWith('/api/admin/') && (!isAuthenticated || session!.role !== 'admin')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   // ── Redirect authenticated users away from auth pages ─────────────────────
   if (isAuthenticated && AUTH_PAGES.has(pathname)) {
     return NextResponse.redirect(publicUrl('/dashboard'));
@@ -108,7 +120,7 @@ export async function middleware(request: NextRequest) {
   // /admin/* pages are admin-only. Unauthenticated or non-admin users get
   // sent to /admin-login (not the customer /login) so admins sign in under
   // a dedicated surface that checks the admin_users table.
-  if (pathname.startsWith('/admin')) {
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/api/')) {
     if (!isAuthenticated || session!.role !== 'admin') {
       const url = publicUrl('/admin-login');
       if (pathname !== '/admin') url.searchParams.set('next', pathname);
@@ -156,6 +168,10 @@ export const config = {
     '/dashboard/:path*',
     '/author/:path*',
     '/admin/:path*',
+    // Cover admin API routes too so unauthenticated requests get a
+    // 401 JSON instead of redirecting to /login (which a fetch() call
+    // would follow, get HTML, and choke on JSON.parse).
+    '/api/admin/:path*',
     // /admin-login is intentionally NOT matched — it's the public admin
     // login page and must stay reachable without a session.
     '/settings/:path*',
