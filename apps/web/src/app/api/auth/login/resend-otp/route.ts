@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
   const ip =
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? '127.0.0.1';
 
-  const rl = await checkAuthRateLimit(redis, { ip, action: 'otp_resend' });
+  // `otp_send` is the existing per-IP cap (10 sends / 10 min) — same family as
+  // signup-OTP-send. Keeps a single auth-action enum in @frenzpay/auth/rate-limit.
+  const rl = await checkAuthRateLimit(redis, { ip, action: 'otp_send' });
   if (!rl.allowed) {
     return NextResponse.json(
       { error: 'Too many resend attempts. Please wait.' },
