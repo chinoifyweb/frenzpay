@@ -238,11 +238,15 @@ async function buildPersonPayload(userId: string): Promise<
   const passportNumber = decryptIfCipher(submission.passportNumber);
   const driversLicense = decryptIfCipher(submission.driverLicenseNumber);
 
-  // Missing-field checks — fail loud with a useful message
+  // Missing-field checks — fail loud with a useful message.
+  // middleName is intentionally NOT required: many Nigerian IDs (and
+  // ID types like NIN) carry only first + last, and forcing the
+  // customer to invent a middle name to satisfy our gate would create
+  // a name mismatch with the ID — the #1 reason KYC gets rejected.
+  // Graph accepts an empty `name_other` for these cases.
   const missing: string[] = [];
   if (!firstName) missing.push('firstName');
   if (!lastName) missing.push('lastName');
-  if (!middleName) missing.push('middleName');
   if (!phone) missing.push('phone');
   if (!dob) missing.push('dob');
   if (!line1) missing.push('addressLine1');
@@ -305,7 +309,10 @@ async function buildPersonPayload(userId: string): Promise<
   const payload: GraphPersonPayload = {
     name_first: firstName!,
     name_last: lastName!,
-    name_other: middleName!,
+    // name_other is empty string when the customer has no middle name
+    // on their ID. Sending null/undefined trips Graph's required-field
+    // check; empty string is accepted.
+    name_other: middleName ?? '',
     phone: phone!,
     email: user.email,
     dob: dob!,

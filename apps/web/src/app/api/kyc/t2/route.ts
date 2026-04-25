@@ -128,6 +128,28 @@ export async function POST(req: NextRequest) {
   const docType = (formData.get('docType')?.toString() ?? '').trim().toLowerCase();
   const docNumber = (formData.get('docNumber')?.toString() ?? '').trim();
   const fullLegalName = (formData.get('fullLegalName')?.toString() ?? '').trim();
+  // Split name parts collected by the new 3-input form. Graph wants
+  // first / last / other (middle) separately on the Person payload.
+  // Older clients that only send fullLegalName get split heuristically
+  // server-side so the User row still gets the structured fields.
+  const formFirstName = (formData.get('firstName')?.toString() ?? '').trim();
+  const formMiddleName = (formData.get('middleName')?.toString() ?? '').trim();
+  const formLastName = (formData.get('lastName')?.toString() ?? '').trim();
+  const splitName = (() => {
+    if (formFirstName || formLastName) {
+      return { first: formFirstName, middle: formMiddleName, last: formLastName };
+    }
+    // Legacy single-field fallback. Treat first token as first name,
+    // last token as surname, anything in between as middle name(s).
+    const parts = fullLegalName.split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return { first: '', middle: '', last: '' };
+    if (parts.length === 1) return { first: parts[0]!, middle: '', last: '' };
+    return {
+      first: parts[0]!,
+      middle: parts.length >= 3 ? parts.slice(1, -1).join(' ') : '',
+      last: parts[parts.length - 1]!,
+    };
+  })();
   const purposeOfAccount = (formData.get('purposeOfAccount')?.toString() ?? '').trim().toLowerCase();
   const sourceOfFunds = (formData.get('sourceOfFunds')?.toString() ?? '').trim().toLowerCase();
   const bvn = (formData.get('bvn')?.toString() ?? '').trim();
@@ -431,6 +453,13 @@ export async function POST(req: NextRequest) {
       where: { id: session.userId },
       data: {
         kycStatus: 'PENDING_REVIEW',
+        // First / middle / last as plain TEXT columns on User. Graph
+        // sync reads them directly without needing decryption.
+        // middleName stays nullable when the customer's ID has no
+        // middle name (Graph payload sends '' for those).
+        firstName: splitName.first,
+        middleName: splitName.middle || null,
+        lastName: splitName.last,
         addressLine1: encryptedLine1 as any,
         addressLine2: (encryptedLine2 as any) ?? undefined,
         city: encryptedCity as any,
