@@ -44,6 +44,7 @@ export const NAV_ITEMS = {
   ],
   dashboard: [
     { label: 'Overview', href: '/dashboard', icon: 'LayoutDashboard' },
+    { label: 'Accounts', href: '/dashboard/accounts', icon: 'Landmark' },
     { label: 'Wallet', href: '/dashboard/wallet', icon: 'Wallet' },
     { label: 'Send', href: '/dashboard/send', icon: 'Send' },
     { label: 'Convert', href: '/dashboard/convert', icon: 'ArrowLeftRight' },
@@ -58,6 +59,7 @@ export const NAV_ITEMS = {
     { label: 'Dashboard', href: '/admin', icon: 'LayoutDashboard' },
     { label: 'Users', href: '/admin/users', icon: 'Users' },
     { label: 'KYC Queue', href: '/admin/kyc', icon: 'ShieldCheck' },
+    { label: 'Account Requests', href: '/admin/account-requests', icon: 'Landmark' },
     { label: 'Fraud Flags', href: '/admin/flags', icon: 'AlertTriangle' },
     { label: 'Transactions', href: '/admin/transactions', icon: 'ArrowUpDown' },
     { label: 'Withdrawals', href: '/admin/withdrawals', icon: 'ArrowUpRight' },

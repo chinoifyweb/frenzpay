@@ -119,6 +119,7 @@ model User {
   paymentLinks     PaymentLink[]
   invoices         Invoice[]
   externalAccounts UserExternalAccount[]
+  accountRequests  AccountRequest[]
   legalConsents    LegalConsent[]
   auditLogs        AuditLog[]
   webPushSubscriptions WebPushSubscription[]
@@ -584,6 +585,51 @@ model UserExternalAccount {
   @@index([userId])
   @@index([externalAccountId])
   @@map("user_external_accounts")
+}
+
+/// Customer-initiated request for a virtual bank account on a specific
+/// rail (USD / EUR / NGN). After KYC approval the customer no longer
+/// gets a virtual account auto-provisioned — they have to apply, an
+/// admin reviews it, and the actual Bridge / Graph provisioning only
+/// runs when the admin approves.
+///
+/// Lifecycle:
+///   PENDING   — customer just submitted, awaiting admin review
+///   APPROVED  — admin clicked approve; provisioning ran successfully
+///               and externalAccountId points at the new
+///               UserExternalAccount row
+///   REJECTED  — admin declined; rejectionReason explains why
+model AccountRequest {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId                   String    @map("user_id") @db.Uuid
+  currency                 String    // USD | EUR | NGN
+  status                   String    @default("PENDING") // PENDING | APPROVED | REJECTED
+
+  // Step 2 of the customer wizard — they confirm their intended use
+  // for THIS specific account, even though they already supplied
+  // similar info at KYC. Compliance wants per-account purpose.
+  sourceOfFunds            String?   @map("source_of_funds")
+  purpose                  String?
+  expectedMonthlyInflowCents BigInt? @map("expected_monthly_inflow_cents")
+
+  // Set on review
+  rejectionReason          String?   @map("rejection_reason")
+  rejectionReasonCode      String?   @map("rejection_reason_code")
+  reviewedBy               String?   @map("reviewed_by") @db.Uuid // AdminUser id
+  reviewedAt               DateTime? @map("reviewed_at")
+
+  // After successful provisioning, the link to the actual virtual account
+  externalAccountId        String?   @map("external_account_id") @db.Uuid
+
+  submittedAt              DateTime  @default(now()) @map("submitted_at")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+  @@map("account_requests")
 }
 
 // Deduplication table for Bridge webhooks

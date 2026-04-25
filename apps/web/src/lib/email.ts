@@ -426,6 +426,116 @@ export async function sendKYCRejectedEmail(
   })
 }
 
+/** Friendly currency labels for the account-request emails. */
+const CURRENCY_LABEL: Record<string, string> = {
+  USD: 'US Dollar',
+  EUR: 'Euro',
+  NGN: 'Nigerian Naira',
+};
+
+/**
+ * Sent when an admin approves a customer's virtual-account request.
+ * Comes from the Accounts department alias so customers see it filed
+ * under their account-onboarding thread, not generic support.
+ */
+export async function sendAccountRequestApprovedEmail(
+  email: string,
+  name: string,
+  currency: string,
+) {
+  const label = CURRENCY_LABEL[currency] ?? currency;
+  return resend.emails.send({
+    from: 'Frenz Pay Accounts <accounts@frenzpay.co>',
+    to: email,
+    subject: `Your ${label} account is ready`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">Your ${label} account is live</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Good news &mdash; your ${label} virtual account has been approved and is now visible in your dashboard.</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">You can start receiving payments to it right away. Open the <strong>Accounts</strong> tab and tap the ${currency} card to see your full bank-account details.</p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="https://frenzpay.co/dashboard/accounts" style="display: inline-block; background: #22c55e; color: white; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">View account details</a>
+        </div>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Have questions about how to receive payments? Reply to this email or message us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a>.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay Accounts &mdash; accounts@frenzpay.co</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Sent when an admin rejects a customer's virtual-account request.
+ * Tells the customer what was wrong and that they can apply again.
+ */
+export async function sendAccountRequestRejectedEmail(
+  email: string,
+  name: string,
+  currency: string,
+  reason: string,
+) {
+  const label = CURRENCY_LABEL[currency] ?? currency;
+  return resend.emails.send({
+    from: 'Frenz Pay Accounts <accounts@frenzpay.co>',
+    to: email,
+    subject: `Action needed on your ${label} account application`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <div style="text-align: center; margin-bottom: 32px;">
+          <div style="display: inline-block; background: #22c55e; border-radius: 12px; width: 48px; height: 48px; line-height: 48px; color: white; font-size: 24px; font-weight: bold;">F</div>
+          <h1 style="font-size: 22px; color: #111; margin: 16px 0 0;">We need a bit more from you</h1>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi ${name},</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Thanks for applying for a ${label} account. We couldn&rsquo;t approve it this round &mdash; here&rsquo;s why:</p>
+        <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 20px; margin: 24px 0;">
+          <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.6;">${escapeHtml(reason)}</p>
+        </div>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">You&rsquo;re welcome to re-apply once the issue above is fixed. Open the <strong>Accounts</strong> tab and tap <em>Request ${currency} account</em> again.</p>
+        <p style="color: #6b7280; font-size: 13px; line-height: 1.6;">Reach us on <a href="https://wa.me/12365997663" style="color: #22c55e; text-decoration: none;">WhatsApp</a> if you&rsquo;re unsure what to fix.</p>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 32px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">Frenz Pay Accounts &mdash; accounts@frenzpay.co</p>
+      </div>
+    `,
+  });
+}
+
+/**
+ * Internal ops alert when a customer submits a new virtual-account
+ * request, so the admin doesn't have to actively poll
+ * /admin/account-requests.
+ */
+export async function sendAdminAccountRequestNotification(
+  customerName: string,
+  customerEmail: string,
+  currency: string,
+) {
+  const label = CURRENCY_LABEL[currency] ?? currency;
+  return resend.emails.send({
+    from: FROM_EMAIL,
+    to: ADMIN_EMAIL,
+    subject: `New ${label} account application — ${customerName}`,
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 32px 24px;">
+        <h1 style="font-size: 18px; color: #111;">New virtual-account application</h1>
+        <p style="color: #374151; font-size: 14px; line-height: 1.6;">A customer just applied for a ${label} virtual account.</p>
+        <div style="background: #f9fafb; border-radius: 12px; padding: 16px 20px; margin: 16px 0;">
+          <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px;">Customer</p>
+          <p style="margin: 0 0 12px; color: #111; font-size: 14px; font-weight: 500;">${escapeHtml(customerName)} &lt;${escapeHtml(customerEmail)}&gt;</p>
+          <p style="margin: 0 0 4px; color: #6b7280; font-size: 12px;">Currency requested</p>
+          <p style="margin: 0; color: #111; font-size: 14px; font-weight: 500;">${currency} (${label})</p>
+        </div>
+        <div style="text-align: center; margin: 24px 0 8px;">
+          <a href="https://app.frenzpay.co/admin/account-requests" style="display: inline-block; background: #22c55e; color: white; padding: 10px 24px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Open admin queue</a>
+        </div>
+      </div>
+    `,
+  });
+}
+
 /** Tiny HTML-escape so a customer's name (or a custom rejection note)
  *  can't smuggle markup into the email. Resend strips most things but
  *  better safe than sorry, especially for the rejection-reason field
