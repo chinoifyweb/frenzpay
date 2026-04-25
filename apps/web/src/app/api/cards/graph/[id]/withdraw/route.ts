@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { getIdempotencyKey } from '@/lib/idempotency';
+import { requireCustomerTotp } from '@/lib/customer-mfa';
 import { prisma } from '@frenzpay/db';
 import { withdrawFromGraphCard, isGraphConfigured } from '@frenzpay/providers/graph';
 import { logger } from '@frenzpay/logger';
@@ -18,6 +19,8 @@ import { logger } from '@frenzpay/logger';
 const Schema = z.object({
   amount: z.number().int().positive().max(10_000_000_00),
   custom_reference: z.string().max(100).optional(),
+  // Authenticator code — accepted via X-Mfa-Token header too. Required.
+  totpCode: z.string().regex(/^\d{6}$/).optional(),
 });
 
 export async function POST(
@@ -58,6 +61,11 @@ export async function POST(
       { status: 422 },
     );
   }
+
+  // TOTP gate — drains money from the card back to the wallet, same
+  // money-movement class as withdrawal. Email OTP is not acceptable.
+  const mfa = await requireCustomerTotp(req, session.userId, parsed.data as { totpCode?: string });
+  if (!mfa.ok) return mfa.response;
 
   try {
     const res = await withdrawFromGraphCard(card.externalCardId, parsed.data.amount, {

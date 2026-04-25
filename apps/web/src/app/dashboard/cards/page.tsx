@@ -93,6 +93,10 @@ export default function CardsPage() {
   const [fundOpen, setFundOpen] = useState(false)
   const [fundMode, setFundMode] = useState<'fund' | 'withdraw'>('fund')
   const [fundAmountUsd, setFundAmountUsd] = useState('')
+  // TOTP gate — same rule as /api/withdrawals: card fund / withdraw move
+  // money and require an authenticator code. Email OTP is not enough.
+  const [fundTotpCode, setFundTotpCode] = useState('')
+  const [fundEnrollRequired, setFundEnrollRequired] = useState(false)
   const [funding, setFunding] = useState(false)
 
   const [revealOpen, setRevealOpen] = useState(false)
@@ -194,6 +198,10 @@ export default function CardsPage() {
     if (!selectedCard) return
     const cents = Math.round(parseFloat(fundAmountUsd || '0') * 100)
     if (cents <= 0) { toast.error('Enter a valid amount'); return }
+    if (fundTotpCode.length !== 6) {
+      toast.error('Enter the 6-digit code from your authenticator app')
+      return
+    }
     setFunding(true)
     try {
       const path = fundMode === 'fund'
@@ -201,17 +209,34 @@ export default function CardsPage() {
         : `/api/cards/graph/${selectedCard.id}/withdraw`
       const res = await fetch(path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': crypto.randomUUID(),
+          'X-Mfa-Token': fundTotpCode,
+        },
         body: JSON.stringify({ amount: cents }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Action failed')
+      if (!res.ok) {
+        // Server says "set up Google Authenticator first" — flag the
+        // dialog state so the UI swaps in a clear enrol path instead
+        // of confusing "wrong code" toasts.
+        if (res.status === 403 && json.enrollRequired) {
+          setFundEnrollRequired(true)
+          throw new Error('Set up Google Authenticator before moving card funds.')
+        }
+        throw new Error(json.error ?? 'Action failed')
+      }
       toast.success(fundMode === 'fund' ? 'Card funded' : 'Withdrawn to wallet')
       setFundOpen(false)
       setFundAmountUsd('')
+      setFundTotpCode('')
+      setFundEnrollRequired(false)
       await fetchCards()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Action failed')
+      // TOTP codes rotate every 30s; clear so the user types a fresh one.
+      setFundTotpCode('')
     } finally { setFunding(false) }
   }
 
@@ -442,7 +467,13 @@ export default function CardsPage() {
       {/* Dialogs */}
       {renderIssueDialog()}
 
-      <Dialog open={fundOpen} onOpenChange={setFundOpen}>
+      <Dialog
+        open={fundOpen}
+        onOpenChange={(o) => {
+          setFundOpen(o)
+          if (!o) { setFundTotpCode(''); setFundEnrollRequired(false) }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{fundMode === 'fund' ? 'Add money to card' : 'Withdraw from card'}</DialogTitle>
@@ -464,13 +495,55 @@ export default function CardsPage() {
                 onChange={(e) => setFundAmountUsd(e.target.value)}
               />
             </div>
+
+            {/* TOTP gate — same rule as withdrawals. Email OTP not
+                accepted for money-moving card actions. */}
+            {fundEnrollRequired ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-900 dark:bg-amber-950/20 p-3 space-y-2">
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-200">
+                  Set up Google Authenticator first
+                </p>
+                <p className="text-xs text-amber-900/80 dark:text-amber-300/90">
+                  Card money-movement requires an authenticator-app code. Email OTP isn’t enough.
+                </p>
+                <Link
+                  href="/dashboard/security"
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-amber-900 dark:text-amber-200 underline"
+                >
+                  Open Security to enrol
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label htmlFor="fund-totp" className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Authenticator code
+                </Label>
+                <Input
+                  id="fund-totp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={fundTotpCode}
+                  onChange={(e) => setFundTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  className="font-mono tracking-widest text-center"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Open Google Authenticator and copy the current 6-digit code for FrenzPay.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setFundOpen(false)} disabled={funding}>Cancel</Button>
-            <Button onClick={submitFund} disabled={funding}>
-              {funding && <Loader2 className="size-4 mr-2 animate-spin" />}
-              {fundMode === 'fund' ? 'Add money' : 'Withdraw'}
-            </Button>
+            {!fundEnrollRequired && (
+              <Button
+                onClick={submitFund}
+                disabled={funding || fundTotpCode.length !== 6 || !fundAmountUsd}
+              >
+                {funding && <Loader2 className="size-4 mr-2 animate-spin" />}
+                {fundMode === 'fund' ? 'Add money' : 'Withdraw'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
