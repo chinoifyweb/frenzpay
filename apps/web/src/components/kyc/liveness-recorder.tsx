@@ -173,6 +173,21 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       || /Brave/i.test(navigator.userAgent ?? '')
   }
 
+  /** Mobile-platform detection so we can show the right unblock-
+   *  permission steps. Android + iOS each have their own settings UX
+   *  and the desktop fallback is different again. */
+  function isAndroid(): boolean {
+    if (typeof navigator === 'undefined') return false
+    return /android/i.test(navigator.userAgent ?? '')
+  }
+  function isIOS(): boolean {
+    if (typeof navigator === 'undefined') return false
+    const ua = navigator.userAgent ?? ''
+    // iPadOS reports as "Macintosh" + touch — second clause catches that.
+    return /iphone|ipad|ipod/i.test(ua)
+      || (/macintosh/i.test(ua) && typeof document !== 'undefined' && 'ontouchend' in document)
+  }
+
   function startRecording() {
     if (!streamRef.current) return
     setError(null)
@@ -285,25 +300,71 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       </div>
       <p className="text-xs text-muted-foreground">{hint}</p>
 
-      {/* When camera was denied we show a richer panel with a Retry
-          button + Brave-Shields tip. Other errors fall through to the
-          normal red Alert below. */}
+      {/* When camera was denied we show a richer panel with platform-
+          specific unblock instructions + Retry button. Other errors
+          fall through to the normal red Alert below. */}
       {error === 'camera_denied' ? (
-        <div className="rounded-lg border border-red-300/70 bg-red-50/70 dark:border-red-900 dark:bg-red-950/20 px-4 py-3 space-y-2">
+        <div className="rounded-lg border border-red-300/70 bg-red-50/70 dark:border-red-900 dark:bg-red-950/20 px-4 py-3 space-y-3">
           <div className="flex items-start gap-2">
             <AlertCircle className="h-4 w-4 mt-0.5 text-red-600" />
             <div>
               <p className="text-sm font-medium text-red-900 dark:text-red-200">Camera access blocked</p>
               <p className="text-xs text-red-900/80 dark:text-red-300/90 mt-0.5 leading-relaxed">
-                Your browser blocked camera + microphone for this page. Tap the camera icon in the address bar (or open browser settings) and allow access for <span className="font-mono">frenzpay.co</span>, then retry.
+                Your browser is blocking camera + microphone for this page. Follow the steps below for your device, then tap <span className="font-medium">Retry</span>.
               </p>
-              {isBrave() && (
-                <p className="text-xs text-red-900/80 dark:text-red-300/90 mt-1.5 leading-relaxed">
-                  <span className="font-semibold">Brave users:</span> tap the Brave Shields icon in the address bar, choose <span className="font-medium">Shields down for this site</span>, then tap Retry.
-                </p>
-              )}
             </div>
           </div>
+
+          {/* Always-visible step list — shown to every browser, with the
+              right one for the user's platform highlighted at the top. */}
+          <div className="rounded-md bg-white dark:bg-black/30 p-3 text-xs text-red-900 dark:text-red-200 space-y-2.5 leading-relaxed">
+            {isAndroid() && (
+              <div>
+                <p className="font-semibold mb-1">📱 Android (Chrome / Brave / Edge)</p>
+                <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                  <li>Tap the <span className="font-medium">lock icon</span> on the left of the address bar</li>
+                  <li>Tap <span className="font-medium">Permissions</span> (or <span className="font-medium">Site settings</span>)</li>
+                  <li>Set <span className="font-medium">Camera</span> and <span className="font-medium">Microphone</span> to <span className="font-medium">Allow</span></li>
+                  <li>Come back to this tab and tap <span className="font-medium">Retry camera</span></li>
+                </ol>
+              </div>
+            )}
+
+            {isIOS() && (
+              <div>
+                <p className="font-semibold mb-1">📱 iPhone (Safari)</p>
+                <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                  <li>Tap the <span className="font-medium">aA</span> icon on the left of the address bar</li>
+                  <li>Tap <span className="font-medium">Website Settings</span></li>
+                  <li>Set <span className="font-medium">Camera</span> + <span className="font-medium">Microphone</span> to <span className="font-medium">Allow</span></li>
+                  <li>Reload the page</li>
+                </ol>
+              </div>
+            )}
+
+            {!isAndroid() && !isIOS() && (
+              <div>
+                <p className="font-semibold mb-1">💻 Desktop browser</p>
+                <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                  <li>Click the <span className="font-medium">camera</span> or <span className="font-medium">lock</span> icon at the left of the address bar</li>
+                  <li>Set <span className="font-medium">Camera</span> + <span className="font-medium">Microphone</span> to <span className="font-medium">Allow</span></li>
+                  <li>Reload the page</li>
+                </ol>
+              </div>
+            )}
+
+            {isBrave() && (
+              <div className="border-t border-red-200/60 dark:border-red-900/40 pt-2">
+                <p className="font-semibold mb-1">🦁 Brave extra step</p>
+                <p>Brave Shields can also block the camera. Tap the lion icon → toggle <span className="font-medium">Shields</span> off for this site → reload.</p>
+              </div>
+            )}
+
+            <div className="border-t border-red-200/60 dark:border-red-900/40 pt-2 text-[11px] opacity-80">
+              Still stuck? Open <span className="font-mono">frenzpay.co/dashboard/kyc</span> on a different device (phone with front camera works best).
+            </div>
+          </div>
+
           <div className="flex justify-end">
             <Button
               type="button"

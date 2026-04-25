@@ -9,6 +9,28 @@
  */
 
 export async function register() {
+  // ── BigInt → JSON polyfill ────────────────────────────────────────────
+  //
+  // Prisma returns DB BIGINT columns as JavaScript bigint. NextResponse.json
+  // calls JSON.stringify which throws "Do not know how to serialize a
+  // BigInt" if any field in the response is a bigint. Most routes
+  // explicitly stringify BigInt fields, but the payment ledger has many
+  // such columns and one missed conversion crashes the entire response.
+  //
+  // Polyfilling toJSON globally turns every bigint into its decimal string
+  // at the JSON layer — same value, just safe to serialise. The cost is
+  // that callers see strings instead of bigints (which is what they have
+  // to do with JSON anyway, since JSON has no bigint type).
+  //
+  // Runs once at process boot via instrumentation.register().
+  if (typeof BigInt !== 'undefined' && !(BigInt.prototype as { toJSON?: unknown }).toJSON) {
+    Object.defineProperty(BigInt.prototype, 'toJSON', {
+      value: function () { return this.toString(); },
+      configurable: true,
+      writable: true,
+    });
+  }
+
   if (!process.env.SENTRY_DSN) return;
 
   const Sentry = await import('@sentry/nextjs');
