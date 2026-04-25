@@ -301,15 +301,41 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
    *  Validates the chosen file against the same mime allow-list + size cap
    *  the server enforces, then short-circuits straight into the review
    *  stage. The filename is renamed with an `liveness-uploaded-` prefix so
-   *  the admin reviewer can distinguish uploaded clips from live ones. */
+   *  the admin reviewer can distinguish uploaded clips from live ones.
+   *
+   *  This MUST reject images. The accept="video/*" attribute on the input
+   *  is just a hint — many platforms let users override it, and some
+   *  Android galleries don't set the mime type at all on picked files. So
+   *  we double-gate: require either a recognised video mime OR a video
+   *  file extension; never both empty. The server enforces the same
+   *  allow-list as defence in depth. */
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = e.target.files?.[0]
     if (!picked) return
     setError(null)
 
     const mime = (picked.type || '').split(';')[0]?.trim().toLowerCase() || ''
+    const ext = (picked.name.split('.').pop() || '').toLowerCase()
+    const VIDEO_EXTS = new Set(['mp4', 'webm', 'mov', 'qt', 'mkv', '3gp', '3gpp', 'm4v'])
+
+    // Hard-reject anything whose mime says image/audio/anything-non-video.
+    if (mime && !mime.startsWith('video/')) {
+      toast.error(`That looks like a${mime.startsWith('image/') ? 'n image' : ''} ${mime || 'file'} — please pick a video clip (MP4, WebM, MOV, MKV, or 3GP).`)
+      e.target.value = ''
+      return
+    }
+    // Mime present and IS video/* — must be on the allow-list.
     if (mime && !ALLOWED_UPLOAD_MIME.includes(mime)) {
-      toast.error(`Unsupported video format (${mime || 'unknown'}). Use MP4, WebM, MOV, MKV, or 3GP.`)
+      toast.error(`Unsupported video format (${mime}). Use MP4, WebM, MOV, MKV, or 3GP.`)
+      e.target.value = ''
+      return
+    }
+    // Some Android browsers + corp-MDM file pickers strip the mime
+    // entirely. Fall back to the extension; if neither is a video
+    // signal, refuse — we don't want an image renamed to "selfie.jpg"
+    // sliding into the liveness slot just because mime was missing.
+    if (!mime && !VIDEO_EXTS.has(ext)) {
+      toast.error('Please pick a video file (MP4, WebM, MOV, MKV, or 3GP). Images are not allowed for liveness.')
       e.target.value = ''
       return
     }
@@ -324,9 +350,20 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
     // straight to review.
     stopEverything()
 
-    const ext = (picked.name.split('.').pop() || 'mp4').toLowerCase()
-    const filename = `liveness-uploaded-${Date.now()}.${ext}`
-    const renamed = new File([picked], filename, { type: mime || picked.type || 'video/mp4' })
+    // Pick the safest mime tag for the renamed File: prefer the picker's
+    // mime, otherwise infer from the extension. Never default to a guess
+    // that contradicts what we just validated.
+    const finalExt = VIDEO_EXTS.has(ext) ? ext : 'mp4'
+    const inferredMime: Record<string, string> = {
+      mp4: 'video/mp4', m4v: 'video/mp4',
+      webm: 'video/webm',
+      mov: 'video/quicktime', qt: 'video/quicktime',
+      mkv: 'video/x-matroska',
+      '3gp': 'video/3gpp', '3gpp': 'video/3gpp',
+    }
+    const finalMime = mime || inferredMime[finalExt] || 'video/mp4'
+    const filename = `liveness-uploaded-${Date.now()}.${finalExt}`
+    const renamed = new File([picked], filename, { type: finalMime })
     onChange(renamed)
     setSource('uploaded')
     setStage('review')
