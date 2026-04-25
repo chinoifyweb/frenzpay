@@ -287,7 +287,11 @@ export default function RequestAccountPage() {
             <div className="space-y-1.5">
               <Label>Where is the money coming from?</Label>
               <Select value={sourceOfFunds} onValueChange={setSourceOfFunds}>
-                <SelectTrigger><SelectValue placeholder="Pick a source" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a source">
+                    {(v: unknown) => SOURCES.find(s => s.value === v)?.label ?? null}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {SOURCES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
                 </SelectContent>
@@ -297,7 +301,11 @@ export default function RequestAccountPage() {
             <div className="space-y-1.5">
               <Label>What will you use the account for?</Label>
               <Select value={purpose} onValueChange={setPurpose}>
-                <SelectTrigger><SelectValue placeholder="Pick a purpose" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a purpose">
+                    {(v: unknown) => PURPOSES.find(p => p.value === v)?.label ?? null}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {PURPOSES.map((p) => <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>)}
                 </SelectContent>
@@ -307,7 +315,11 @@ export default function RequestAccountPage() {
             <div className="space-y-1.5">
               <Label>Expected monthly inflow (USD)</Label>
               <Select value={inflowCents} onValueChange={setInflowCents}>
-                <SelectTrigger><SelectValue placeholder="Pick a band" /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Pick a band">
+                    {(v: unknown) => INFLOW_BANDS.find(b => b.value === v)?.label ?? null}
+                  </SelectValue>
+                </SelectTrigger>
                 <SelectContent>
                   {INFLOW_BANDS.map((b) => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
                 </SelectContent>
