@@ -174,10 +174,12 @@ export async function POST(req: NextRequest) {
         await handleCardEvent(eventId, payload);
         break;
       case 'card.transaction':
+        await handleCardTransaction(eventId, payload);
+        break;
       case 'conversion.success':
       case 'conversion.failed':
-        // Logged for now; card charges + FX conversion reconciliation come
-        // with Phase I / H wire-up.
+        // Logged for now; FX conversion reconciliation comes with Phase H
+        // wire-up.
         logger.info(
           { eventId, eventType: payload.event_type },
           'Graph webhook received (handler stub)',
@@ -551,4 +553,158 @@ async function handleCardEvent(eventId: string, payload: WebhookEnvelope) {
     data: { status: newStatus as any },
   });
   logger.info({ eventId, externalCardId, newStatus }, 'Card status updated from webhook');
+}
+
+/**
+ * card.transaction \u2014 fired by Graph when a virtual card is charged at a
+ * merchant. We respond by:
+ *   1. Logging an audit event with the transaction details.
+ *   2. Charging the configured per-transaction fees on top:
+ *        feePctCents       = amount * cardTransactionFeePercent
+ *        foreignFeeCents   = amount * cardForeignTxFeePercent  (when merchant ccy != USD)
+ *      Both are debited from user.USD.AVAILABLE \u2192 fees_usd, idempotent
+ *      per (transactionEventId).
+ *   3. The actual card charge debit (the merchant amount) is handled
+ *      separately by Graph's settlement to our master wallet \u2014 see the
+ *      account.credit / account.debit webhook flow. The fee here is the
+ *      OUR-CUT only.
+ *
+ * Skipped silently when both fee percentages are 0 \u2014 we still log the
+ * underlying tx for reconciliation.
+ */
+async function handleCardTransaction(eventId: string, payload: WebhookEnvelope) {
+  const data = payload.data ?? payload.entity ?? {};
+  const externalCardId = readString(data, 'card_id', 'card', 'card_external_id');
+  const amountSubunits = readNumber(data, 'amount', 'amount_subunits');
+  const merchantCurrency = (readString(data, 'currency', 'merchant_currency') ?? 'USD').toUpperCase();
+  const merchantName = readString(data, 'merchant_name', 'description');
+
+  if (!externalCardId || !amountSubunits) {
+    logger.warn(
+      { eventId, hasCard: !!externalCardId, amount: amountSubunits },
+      'card.transaction missing card_id or amount \u2014 logging only',
+    );
+    return;
+  }
+
+  const card = await prisma.card.findUnique({
+    where: { externalCardId },
+    select: { id: true, userId: true },
+  });
+  if (!card) {
+    logger.warn({ eventId, externalCardId }, 'card.transaction for unknown card');
+    return;
+  }
+
+  // Read fee config
+  const settings = await prisma.platformSetting.findMany({
+    where: { key: { in: ['cardTransactionFeePercent', 'cardForeignTxFeePercent'] } },
+    select: { key: true, value: true },
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const map: Record<string, any> = Object.fromEntries(
+    settings.map((s: { key: string; value: unknown }) => [s.key, s.value]),
+  );
+  const txPct = typeof map.cardTransactionFeePercent === 'number'
+    ? map.cardTransactionFeePercent
+    : Number(map.cardTransactionFeePercent) || 0;
+  const fxPct = typeof map.cardForeignTxFeePercent === 'number'
+    ? map.cardForeignTxFeePercent
+    : Number(map.cardForeignTxFeePercent) || 0;
+
+  const isForeign = merchantCurrency !== 'USD';
+  const txFeeCents = Math.floor(amountSubunits * (txPct / 100));
+  const fxFeeCents = isForeign ? Math.floor(amountSubunits * (fxPct / 100)) : 0;
+  const totalFeeCents = txFeeCents + fxFeeCents;
+
+  if (totalFeeCents <= 0) {
+    logger.info(
+      { eventId, externalCardId, amountSubunits, merchantCurrency },
+      'card.transaction logged (no fees configured)',
+    );
+    return;
+  }
+
+  // Lazy-import the ledger helpers (already inlined into the cron bundle but
+  // we use the same here for the route handler).
+  const { ensureAccount, getSystemAccount, postTransaction, balanceOf } = await import(
+    '@frenzpay/ledger'
+  );
+
+  const availableAccountId = await ensureAccount(prisma, card.userId, 'USD', 'AVAILABLE');
+  const balance = await balanceOf(prisma, availableAccountId);
+  if (balance < BigInt(totalFeeCents)) {
+    // Insufficient balance to cover the fee \u2014 log + skip; ops can chase.
+    // We don't go negative.
+    logger.warn(
+      {
+        eventId,
+        userId: card.userId,
+        externalCardId,
+        amountSubunits,
+        totalFeeCents,
+        balance: balance.toString(),
+      },
+      'card.transaction fee skipped: insufficient USD balance',
+    );
+    return;
+  }
+
+  const feesAccountId = await getSystemAccount(prisma, 'fees_usd');
+  await prisma.$transaction(async (tx: any) => {
+    await postTransaction(tx, {
+      type: 'FEE',
+      idempotencyKey: `card-tx-fee-${eventId}`,
+      initiatorUserId: card.userId,
+      lines: [
+        {
+          debitAccountId: availableAccountId,
+          creditAccountId: feesAccountId,
+          amount: BigInt(totalFeeCents),
+        },
+      ],
+      metadata: {
+        kind: 'card_transaction',
+        externalCardId,
+        amountSubunits,
+        merchantCurrency,
+        merchantName,
+        txFeeCents,
+        fxFeeCents,
+        isForeign,
+        graphEventId: eventId,
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        userId: card.userId,
+        action: 'CARD_TRANSACTION_FEE_CHARGED',
+        resourceType: 'Card',
+        resourceId: card.id,
+        metadata: {
+          eventId,
+          amountSubunits,
+          merchantCurrency,
+          merchantName,
+          txFeeCents,
+          fxFeeCents,
+          totalFeeCents,
+        },
+      },
+    });
+  });
+
+  logger.info(
+    {
+      eventId,
+      cardId: card.id,
+      userId: card.userId,
+      amountSubunits,
+      merchantCurrency,
+      totalFeeCents,
+      txFeeCents,
+      fxFeeCents,
+    },
+    'card.transaction fee posted',
+  );
 }

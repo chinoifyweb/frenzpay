@@ -20,7 +20,28 @@ import { z } from 'zod';
 import { requireSession } from '@/lib/session';
 import { prisma } from '@frenzpay/db';
 import { createGraphCard, isGraphConfigured } from '@frenzpay/providers/graph';
+import {
+  ensureAccount,
+  balanceOf,
+  getSystemAccount,
+  postTransaction,
+} from '@frenzpay/ledger';
 import { logger } from '@frenzpay/logger';
+
+async function readNumberSetting(key: string, fallback: number): Promise<number> {
+  try {
+    const row = await prisma.platformSetting.findUnique({
+      where: { key },
+      select: { value: true },
+    });
+    if (!row) return fallback;
+    if (typeof row.value === 'number') return row.value;
+    if (typeof row.value === 'string') return Number(row.value) || fallback;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 const CreateSchema = z.object({
   label: z.string().min(1).max(80).optional(),
@@ -105,6 +126,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // ── Creation fee check ──────────────────────────────────────────────────
+  // Pre-flight: load the configured fee + the user's USD balance. We need
+  // total = funding + creation fee available before we ask Graph for the
+  // card, so the user doesn't end up with a card and no funds (or worse,
+  // negative balance once Graph debits the card itself separately).
+  const creationFeeCents = await readNumberSetting('cardCreationFeeUsdCents', 0);
+  const usdAvailableId = await ensureAccount(prisma, session.userId, 'USD', 'AVAILABLE');
+  const usdBalance = await balanceOf(prisma, usdAvailableId);
+  const totalCostCents = BigInt(parsed.data.funding_amount + creationFeeCents);
+  if (usdBalance < totalCostCents) {
+    return NextResponse.json(
+      {
+        error: `Insufficient USD balance. Need ${(Number(totalCostCents) / 100).toFixed(2)} (${(parsed.data.funding_amount / 100).toFixed(2)} funding + ${(creationFeeCents / 100).toFixed(2)} creation fee), have ${(Number(usdBalance) / 100).toFixed(2)}.`,
+        availableCents: usdBalance.toString(),
+        requiredCents: totalCostCents.toString(),
+        creationFeeCents,
+      },
+      { status: 422 },
+    );
+  }
+
   try {
     const res = await createGraphCard(
       {
@@ -115,19 +157,45 @@ export async function POST(req: NextRequest) {
       { idempotencyKey: `graph-card-${session.userId}-${Date.now()}` },
     );
 
-    // Placeholder fields — card.created webhook populates last4/expiry/brand
-    // once Graph finishes provisioning the PAN.
-    const card = await prisma.card.create({
-      data: {
-        userId: session.userId,
-        externalCardId: res.cardId,
-        last4: '----',
-        expiryMonth: 0,
-        expiryYear: 0,
-        brand: 'Visa',
-        status: 'ACTIVE',
-      },
-      select: { id: true, externalCardId: true, status: true, createdAt: true },
+    // Charge the creation fee + create the Card row atomically. If Graph
+    // gave us a card id but we then fail to debit, we'd leave an unfunded
+    // card on Graph's side — that's a soft inconsistency we tolerate (ops
+    // will reconcile during fees_usd settlement).
+    const card = await prisma.$transaction(async (tx: any) => {
+      if (creationFeeCents > 0) {
+        const feesAccountId = await getSystemAccount(tx, 'fees_usd');
+        await postTransaction(tx, {
+          type: 'FEE',
+          idempotencyKey: `card-create-fee-${res.cardId}`,
+          initiatorUserId: session.userId,
+          lines: [
+            {
+              debitAccountId: usdAvailableId,
+              creditAccountId: feesAccountId,
+              amount: BigInt(creationFeeCents),
+            },
+          ],
+          metadata: {
+            kind: 'card_creation',
+            externalCardId: res.cardId,
+            feeCents: creationFeeCents,
+          },
+        });
+      }
+      // Placeholder fields — card.created webhook populates last4/expiry/brand
+      // once Graph finishes provisioning the PAN.
+      return tx.card.create({
+        data: {
+          userId: session.userId,
+          externalCardId: res.cardId,
+          last4: '----',
+          expiryMonth: 0,
+          expiryYear: 0,
+          brand: 'Visa',
+          status: 'ACTIVE',
+        },
+        select: { id: true, externalCardId: true, status: true, createdAt: true },
+      });
     });
 
     logger.info(
@@ -135,6 +203,7 @@ export async function POST(req: NextRequest) {
         userId: session.userId,
         externalCardId: res.cardId,
         funding_amount: parsed.data.funding_amount,
+        creationFeeCents,
       },
       'Graph card issuance requested',
     );
@@ -148,7 +217,8 @@ export async function POST(req: NextRequest) {
           status: card.status,
           createdAt: card.createdAt.toISOString(),
         },
-        note: 'Card is being provisioned — details (PAN/expiry) arrive after Graph confirms via webhook.',
+        creationFeeCents,
+        note: 'Card is being provisioned \u2014 details (PAN/expiry) arrive after Graph confirms via webhook.',
       },
       { status: 201 },
     );

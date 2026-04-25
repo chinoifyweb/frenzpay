@@ -31,6 +31,7 @@ import { retentionSweep } from './jobs/retention-sweep';
 import { auditExport } from './jobs/audit-export';
 import { processMaturedLocks } from './jobs/process-matured-locks';
 import { monthlyMaintenanceFee } from './jobs/monthly-maintenance-fee';
+import { monthlyCardFee } from './jobs/monthly-card-fee';
 
 interface Job {
   name: string;
@@ -49,6 +50,10 @@ const jobs: Job[] = [
   // Africa/Lagos. Reads monthlyMaintenanceFeeUsdCents from platform_settings;
   // no-op when 0. Idempotent per user per month via Transaction.idempotencyKey.
   { name: 'monthly-maintenance-fee', schedule: '30 1 1 * *',   fn: monthlyMaintenanceFee },
+  // Card monthly fee runs 15 min AFTER the user-level maintenance fee so
+  // accounts get debited first and the card fee can use the trimmed
+  // balance check correctly.
+  { name: 'monthly-card-fee',        schedule: '45 1 1 * *',   fn: monthlyCardFee },
 ];
 
 const env = process.env['NODE_ENV'] ?? 'development';

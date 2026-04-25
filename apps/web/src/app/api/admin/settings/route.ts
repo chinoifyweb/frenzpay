@@ -90,6 +90,40 @@ const SETTING_SCHEMAS = {
     default: 0,
   },
 
+  // Card fees \u2014 layered on top of whatever Graph charges us. We collect from
+  // the customer; ops reconciles against Graph's invoice in fees_usd at end of
+  // month.
+  cardCreationFeeUsdCents: {
+    schema: z.number().int().min(0).max(50_000),
+    description:
+      'One-time fee charged to the customer when they issue a virtual USD card. USD cents. 0 = free. Debited from user.USD.AVAILABLE at issuance; the issuance fails if balance is insufficient.',
+    default: 0,
+  },
+  cardMonthlyFeeUsdCents: {
+    schema: z.number().int().min(0).max(50_000),
+    description:
+      'Monthly fee per active virtual card. USD cents. 0 = disabled. Cron job charges every active card on the 1st of each month; cards with insufficient backing funds are skipped + retried next month.',
+    default: 0,
+  },
+  cardTransactionFeePercent: {
+    schema: z.number().min(0).max(10),
+    description:
+      'Percentage fee on each card transaction (charge or auth). 0 = no transaction fee on top of what Graph passes through. Applied during the card.transaction webhook.',
+    default: 0,
+  },
+  cardForeignTxFeePercent: {
+    schema: z.number().min(0).max(10),
+    description:
+      'Additional percentage fee when the merchant currency is not USD (foreign-currency surcharge). 0 = disabled. Stacks on top of cardTransactionFeePercent.',
+    default: 0,
+  },
+  cardReplacementFeeUsdCents: {
+    schema: z.number().int().min(0).max(50_000),
+    description:
+      'Fee charged when the user requests a replacement card (lost / compromised / damaged). USD cents. 0 = free.',
+    default: 0,
+  },
+
   // Compliance
   kycRequiredForWithdrawal: {
     schema: z.boolean(),

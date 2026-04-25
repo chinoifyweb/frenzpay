@@ -29,6 +29,7 @@ import {
   DollarSign,
   Shield,
   Server,
+  CreditCard,
   Copy,
   Loader2,
   AlertTriangle,
@@ -50,6 +51,13 @@ interface SettingsPayload {
   fxManualRateUsdNgn: number;
   minWithdrawalUsd: number;
   monthlyMaintenanceFeeUsdCents: number;
+
+  // Card fees
+  cardCreationFeeUsdCents: number;
+  cardMonthlyFeeUsdCents: number;
+  cardTransactionFeePercent: number;
+  cardForeignTxFeePercent: number;
+  cardReplacementFeeUsdCents: number;
 
   kycRequiredForWithdrawal: boolean;
   dailyWithdrawalLimitUsd: number;
@@ -78,6 +86,11 @@ const DEFAULTS: SettingsPayload = {
   fxManualRateUsdNgn: 0,
   minWithdrawalUsd: 10,
   monthlyMaintenanceFeeUsdCents: 0,
+  cardCreationFeeUsdCents: 0,
+  cardMonthlyFeeUsdCents: 0,
+  cardTransactionFeePercent: 0,
+  cardForeignTxFeePercent: 0,
+  cardReplacementFeeUsdCents: 0,
   kycRequiredForWithdrawal: true,
   dailyWithdrawalLimitUsd: 50_000,
   monthlyWithdrawalLimitUsd: 500_000,
@@ -193,6 +206,10 @@ export default function AdminSettingsPage() {
           <TabsTrigger value="fees" className="gap-1.5">
             <DollarSign className="h-4 w-4" />
             Fees &amp; FX
+          </TabsTrigger>
+          <TabsTrigger value="cards" className="gap-1.5">
+            <CreditCard className="h-4 w-4" />
+            Card fees
           </TabsTrigger>
           <TabsTrigger value="compliance" className="gap-1.5">
             <Shield className="h-4 w-4" />
@@ -479,6 +496,194 @@ export default function AdminSettingsPage() {
                     <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
                   )}
                   Save maintenance fee
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* ── Card fees ─────────────────────────────────────────────────── */}
+        <TabsContent value="cards">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>One-off card fees</CardTitle>
+                <CardDescription>
+                  Charged at issuance / replacement. All values in USD; debited from
+                  the user&apos;s available balance at the moment of action.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Card creation fee (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={(settings.cardCreationFeeUsdCents / 100).toFixed(2)}
+                      onChange={(e) =>
+                        set(
+                          'cardCreationFeeUsdCents',
+                          Math.max(0, Math.round(parseFloat(e.target.value || '0') * 100)),
+                        )
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Charged once when a customer issues a virtual USD card. Card creation
+                      fails if balance is insufficient.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Card replacement fee (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={(settings.cardReplacementFeeUsdCents / 100).toFixed(2)}
+                      onChange={(e) =>
+                        set(
+                          'cardReplacementFeeUsdCents',
+                          Math.max(0, Math.round(parseFloat(e.target.value || '0') * 100)),
+                        )
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Charged when a customer requests a replacement (lost / stolen / damaged).
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  disabled={saving !== null}
+                  onClick={() =>
+                    save('Card one-off fees', [
+                      'cardCreationFeeUsdCents',
+                      'cardReplacementFeeUsdCents',
+                    ])
+                  }
+                >
+                  {saving === 'Card one-off fees' && (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  )}
+                  Save Changes
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recurring card fees</CardTitle>
+                <CardDescription>
+                  Monthly fee per active card. Charged by cron on the 1st of every month;
+                  cards backed by users with insufficient balance are skipped + retried
+                  next month (we never let balances go negative).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Monthly card fee (USD)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={(settings.cardMonthlyFeeUsdCents / 100).toFixed(2)}
+                      onChange={(e) =>
+                        set(
+                          'cardMonthlyFeeUsdCents',
+                          Math.max(0, Math.round(parseFloat(e.target.value || '0') * 100)),
+                        )
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      0 disables. Charged per active card every month.
+                    </p>
+                  </div>
+                </div>
+                {settings.cardMonthlyFeeUsdCents > 0 && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Each active card will be charged{' '}
+                      <strong>
+                        ${(settings.cardMonthlyFeeUsdCents / 100).toFixed(2)}
+                      </strong>{' '}
+                      on the 1st of every month. Idempotent per (cardId, YYYY-MM) so
+                      re-running the cron is safe.
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <Button
+                  disabled={saving !== null}
+                  onClick={() =>
+                    save('Card monthly fee', ['cardMonthlyFeeUsdCents'])
+                  }
+                >
+                  {saving === 'Card monthly fee' && (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  )}
+                  Save monthly fee
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Per-transaction card fees</CardTitle>
+                <CardDescription>
+                  Applied at each card charge via the card.transaction webhook.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Transaction fee (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={settings.cardTransactionFeePercent}
+                      onChange={(e) =>
+                        set('cardTransactionFeePercent', parseFloat(e.target.value) || 0)
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Percentage of every charge amount. 0 = no extra fee on top of
+                      whatever Graph passes through.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Foreign-currency surcharge (%)</Label>
+                    <Input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="10"
+                      value={settings.cardForeignTxFeePercent}
+                      onChange={(e) =>
+                        set('cardForeignTxFeePercent', parseFloat(e.target.value) || 0)
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Additional % when merchant currency is not USD. Stacks on top of the
+                      transaction fee above.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  disabled={saving !== null}
+                  onClick={() =>
+                    save('Card transaction fees', [
+                      'cardTransactionFeePercent',
+                      'cardForeignTxFeePercent',
+                    ])
+                  }
+                >
+                  {saving === 'Card transaction fees' && (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  )}
+                  Save transaction fees
                 </Button>
               </CardContent>
             </Card>
