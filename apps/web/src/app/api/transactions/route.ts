@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(100, parseInt(searchParams.get('limit') ?? '20', 10));
   const type = searchParams.get('type');
   const currency = searchParams.get('currency');
+  const status = searchParams.get('status');
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {
@@ -30,6 +31,9 @@ export async function GET(req: NextRequest) {
   };
   if (type && VALID_TYPES.has(type)) where.type = type;
   if (currency) where.currency = currency;
+  if (status && ['POSTED', 'PENDING', 'FAILED', 'REVERSED'].includes(status)) {
+    where.status = status;
+  }
 
   const [transactions, total] = await Promise.all([
     prisma.transaction.findMany({

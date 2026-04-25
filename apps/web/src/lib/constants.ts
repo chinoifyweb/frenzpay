@@ -52,6 +52,7 @@ export const NAV_ITEMS = {
     { label: 'Cards', href: '/dashboard/cards', icon: 'CreditCard' },
     { label: 'Savings', href: '/dashboard/savings', icon: 'PiggyBank' },
     { label: 'Withdraw', href: '/dashboard/withdraw', icon: 'ArrowUpRight' },
+    { label: 'Reports', href: '/dashboard/reports', icon: 'FileText' },
     { label: 'KYC', href: '/dashboard/kyc', icon: 'ShieldCheck' },
     { label: 'Security', href: '/dashboard/security', icon: 'KeyRound' },
     { label: 'Settings', href: '/dashboard/settings', icon: 'Settings' },

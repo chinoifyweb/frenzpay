@@ -99,6 +99,14 @@ const CURRENCY_FILTER_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'USDC', label: 'USDC' },
 ];
 
+const STATUS_FILTER_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'ALL', label: 'All status' },
+  { value: 'POSTED', label: 'Completed' },
+  { value: 'PENDING', label: 'Pending' },
+  { value: 'FAILED', label: 'Failed' },
+  { value: 'REVERSED', label: 'Reversed' },
+];
+
 const PAGE_LIMIT = 20;
 
 function formatMinor(amount: string | null | undefined, currency: string): string {
@@ -293,6 +301,7 @@ export default function ActivityPage() {
   const [page, setPage] = useState(1);
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
   const [currencyFilter, setCurrencyFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -300,8 +309,9 @@ export default function ActivityPage() {
     params.set('limit', String(PAGE_LIMIT));
     if (typeFilter !== 'ALL') params.set('type', typeFilter);
     if (currencyFilter !== 'ALL') params.set('currency', currencyFilter);
+    if (statusFilter !== 'ALL') params.set('status', statusFilter);
     return params.toString();
-  }, [page, typeFilter, currencyFilter]);
+  }, [page, typeFilter, currencyFilter, statusFilter]);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -329,7 +339,7 @@ export default function ActivityPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [typeFilter, currencyFilter]);
+  }, [typeFilter, currencyFilter, statusFilter]);
 
   const pagination = data?.pagination;
   const transactions = data?.transactions ?? [];
@@ -372,6 +382,16 @@ export default function ActivityPage() {
               </SelectTrigger>
               <SelectContent>
                 {CURRENCY_FILTER_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={(v) => { if (v) setStatusFilter(v); }}>
+              <SelectTrigger className="h-9 w-[140px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_FILTER_OPTIONS.map((opt) => (
                   <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
                 ))}
               </SelectContent>

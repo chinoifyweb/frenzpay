@@ -7,6 +7,8 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ArrowLeftRight,
+  CheckCircle2,
+  Circle,
   CreditCard,
   PiggyBank,
   Send,
@@ -75,6 +77,13 @@ export default function DashboardOverview() {
   const [recentLoading, setRecentLoading] = useState(true)
   const [provisioning, setProvisioning] = useState(false)
 
+  // Setup-progress strip: pulls just enough side-state (mfa enrolled,
+  // open account requests) to show a 0/5 → 5/5 progress ring like Grey's
+  // "Continue setup" bar. Each step is a piece of the post-signup
+  // funnel; once all 5 are done the strip hides itself.
+  const [mfaEnrolled, setMfaEnrolled] = useState<boolean | null>(null)
+  const [hasAccountRequest, setHasAccountRequest] = useState<boolean | null>(null)
+
   const fetchAccounts = useCallback(async () => {
     setAccountsLoading(true)
     try {
@@ -95,6 +104,19 @@ export default function DashboardOverview() {
   }, [])
 
   useEffect(() => { void fetchAccounts(); void fetchRecent() }, [fetchAccounts, fetchRecent])
+
+  // Background fetch for the progress strip. Failures are non-fatal —
+  // the strip just doesn't show that step as complete, no error UI.
+  useEffect(() => {
+    void fetch('/api/auth/mfa', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setMfaEnrolled(!!d?.enrolled))
+      .catch(() => setMfaEnrolled(false))
+    void fetch('/api/account-requests', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setHasAccountRequest((d?.requests ?? []).length > 0))
+      .catch(() => setHasAccountRequest(false))
+  }, [])
 
   async function activateWallet() {
     setProvisioning(true)
@@ -129,6 +151,70 @@ export default function DashboardOverview() {
           {meLoading ? <Skeleton className="h-8 w-48" /> : `Hi, ${firstName} 👋`}
         </h1>
       </div>
+
+      {/* Setup-progress strip — modelled on Grey's "Continue setup".
+          Five post-signup milestones: email verified, KYC approved,
+          2FA enrolled, first account requested, first deposit. Hides
+          itself once all 5 are done so it doesn't loiter on
+          long-time-customer dashboards. */}
+      {me && (() => {
+        const steps = [
+          { key: 'email',   label: 'Verify email',           done: !!me.emailVerified, href: '/dashboard/settings' },
+          { key: 'kyc',     label: 'Complete KYC',           done: kycTier === 'T2' || kycTier === 'T3', href: '/dashboard/kyc' },
+          { key: 'mfa',     label: 'Set up 2FA',             done: mfaEnrolled === true, href: '/dashboard/security' },
+          { key: 'account', label: 'Request a virtual account', done: hasAccountRequest === true || hasAccounts, href: '/dashboard/accounts' },
+          { key: 'fund',    label: 'Receive your first deposit', done: hasAccounts && (recent.length > 0), href: '/dashboard/wallet/receive' },
+        ] as const
+        const completed = steps.filter((s) => s.done).length
+        const allDone = completed === steps.length
+        if (allDone) return null
+        // Find the next undone step to highlight as the primary CTA.
+        const next = steps.find((s) => !s.done)
+        return (
+          <Card className="border-primary/20">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-4">
+                {/* Progress ring */}
+                <div className="relative flex h-14 w-14 shrink-0 items-center justify-center">
+                  <svg className="absolute inset-0" viewBox="0 0 36 36">
+                    <circle cx="18" cy="18" r="15.9155" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted" />
+                    <circle
+                      cx="18" cy="18" r="15.9155" fill="none" strokeWidth="3"
+                      stroke="currentColor"
+                      className="text-primary"
+                      strokeDasharray={`${(completed / steps.length) * 100}, 100`}
+                      strokeDashoffset="0"
+                      strokeLinecap="round"
+                      transform="rotate(-90 18 18)"
+                    />
+                  </svg>
+                  <span className="relative text-xs font-semibold">{completed}/{steps.length}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium">Continue setting up your account</p>
+                  <p className="text-xs text-muted-foreground">
+                    {next ? `Next: ${next.label}` : 'Almost there!'}
+                  </p>
+                </div>
+                {next && (
+                  <Button asChild size="sm">
+                    <Link href={next.href}>Continue</Link>
+                  </Button>
+                )}
+              </div>
+              {/* Per-step list */}
+              <div className="mt-4 grid gap-2 sm:grid-cols-5">
+                {steps.map((s) => (
+                  <div key={s.key} className={`rounded-md border px-2 py-1.5 text-[11px] flex items-center gap-1.5 ${s.done ? 'border-emerald-200 bg-emerald-50/70 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300' : 'bg-muted/30'}`}>
+                    {s.done ? <CheckCircle2 className="size-3 shrink-0" /> : <Circle className="size-3 shrink-0 opacity-50" />}
+                    <span className="truncate">{s.label}</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* KYC banner — hidden at T3.
           The four states it can show:

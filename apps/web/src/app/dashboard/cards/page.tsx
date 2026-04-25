@@ -1,403 +1,117 @@
-'use client';
+'use client'
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
-import { toast } from 'sonner';
-import {
-  AlertCircle,
-  CreditCard,
-  Lock,
-  Plus,
-  RefreshCw,
-  Shield,
-  ShieldCheck,
-  Snowflake,
-  Trash2,
-  Unlock,
-} from 'lucide-react';
-import { useMe } from '@/hooks/use-me';
+/**
+ * /dashboard/cards
+ *
+ * "Select card type" landing — modelled on Grey's design. The customer
+ * picks Virtual (active, links into the Graph card management page) or
+ * Physical (greyed out with a "Coming soon" pill). The previous detailed
+ * Bridge card management UI was retired here — Bridge-issued cards
+ * still work via /api/cards but new cards all go through the Graph rail
+ * at /dashboard/cards/graph.
+ */
 
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import Link from 'next/link'
+import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { ArrowRight, CreditCard, Lock } from 'lucide-react'
+import { useMe } from '@/hooks/use-me'
+import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
 
-type CardStatus = 'ACTIVE' | 'FROZEN' | 'TERMINATED';
+export default function CardsLandingPage() {
+  const { me, loading } = useMe()
+  const tier = me?.kycTier ?? 'T0'
+  const isVerified = tier === 'T2' || tier === 'T3'
 
-interface CardRow {
-  id: string;
-  last4: string;
-  brand: string;
-  expiryMonth: number;
-  expiryYear: number;
-  status: CardStatus;
-  dailyLimitCents: string | null;
-  monthlyLimitCents: string | null;
-  createdAt: string;
-}
-
-function formatExpiry(m: number, y: number) {
-  return `${String(m).padStart(2, '0')}/${String(y).slice(-2)}`;
-}
-function formatUsdCents(v: string | null) {
-  if (!v) return 'No limit';
-  const n = BigInt(v);
-  const whole = n / 100n;
-  const frac = (n % 100n).toString().padStart(2, '0');
-  const grouped = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `$${grouped}.${frac}`;
-}
-
-function CardVisual({ card }: { card: CardRow }) {
   return (
-    <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-950 p-5 text-white shadow-lg">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.25),transparent_55%)]" />
-      <div className="relative flex h-full flex-col justify-between">
-        <div className="flex items-start justify-between">
-          <span className="text-sm uppercase tracking-wide text-zinc-400">FrenzPay</span>
-          <Badge variant="secondary" className="bg-white/10 text-white hover:bg-white/10">
-            {card.brand}
-          </Badge>
-        </div>
-        <div className="font-mono text-lg tracking-[0.3em]">•••• •••• •••• {card.last4}</div>
-        <div className="flex items-end justify-between text-xs">
-          <span className="font-mono text-zinc-400">VALID THRU {formatExpiry(card.expiryMonth, card.expiryYear)}</span>
-          {card.status !== 'ACTIVE' && (
-            <Badge
-              variant="secondary"
-              className={card.status === 'FROZEN' ? 'bg-sky-500/20 text-sky-200' : 'bg-red-500/20 text-red-200'}
-            >
-              {card.status}
-            </Badge>
-          )}
-        </div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Cards</h1>
+        <p className="text-muted-foreground text-sm">Spend your USD balance anywhere Visa or Mastercard is accepted.</p>
       </div>
-    </div>
-  );
-}
 
-export default function CardsPage() {
-  const { me, loading: meLoading } = useMe();
-  const [cards, setCards] = useState<CardRow[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // Issue dialog
-  const [issueOpen, setIssueOpen] = useState(false);
-  const [dailyLimitUsd, setDailyLimitUsd] = useState('500');
-  const [monthlyLimitUsd, setMonthlyLimitUsd] = useState('5000');
-  const [issuePin, setIssuePin] = useState('');
-  const [issuing, setIssuing] = useState(false);
-
-  // Terminate dialog
-  const [terminateTarget, setTerminateTarget] = useState<CardRow | null>(null);
-  const [terminatePin, setTerminatePin] = useState('');
-  const [terminating, setTerminating] = useState(false);
-
-  const fetchCards = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/cards', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`Failed to load cards (${res.status})`);
-      const json = await res.json();
-      setCards(json.cards ?? []);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load cards';
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void fetchCards(); }, [fetchCards]);
-
-  const handleIssue = useCallback(async () => {
-    setIssuing(true);
-    try {
-      const res = await fetch('/api/cards', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pin: issuePin,
-          dailyLimitCents: dailyLimitUsd ? String(BigInt(Math.round(parseFloat(dailyLimitUsd) * 100))) : undefined,
-          monthlyLimitCents: monthlyLimitUsd ? String(BigInt(Math.round(parseFloat(monthlyLimitUsd) * 100))) : undefined,
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Failed to issue card');
-      toast.success(`${json.card.brand} card issued — •••• ${json.card.last4}`);
-      setIssueOpen(false);
-      setIssuePin('');
-      await fetchCards();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to issue card');
-    } finally {
-      setIssuing(false);
-    }
-  }, [issuePin, dailyLimitUsd, monthlyLimitUsd, fetchCards]);
-
-  const handleFreezeToggle = useCallback(async (card: CardRow) => {
-    const path = card.status === 'FROZEN' ? `/api/cards/${card.id}/unfreeze` : `/api/cards/${card.id}/freeze`;
-    try {
-      const res = await fetch(path, { method: 'POST' });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Action failed');
-      toast.success(card.status === 'FROZEN' ? 'Card unfrozen' : 'Card frozen');
-      await fetchCards();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Action failed');
-    }
-  }, [fetchCards]);
-
-  const handleTerminate = useCallback(async () => {
-    if (!terminateTarget) return;
-    setTerminating(true);
-    try {
-      const res = await fetch(`/api/cards/${terminateTarget.id}/terminate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: terminatePin }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? 'Termination failed');
-      toast.success(`Card •••• ${terminateTarget.last4} terminated`);
-      setTerminateTarget(null);
-      setTerminatePin('');
-      await fetchCards();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Termination failed');
-    } finally {
-      setTerminating(false);
-    }
-  }, [terminateTarget, terminatePin, fetchCards]);
-
-  // ── KYC gate — cards require T2+ ─────────────────────────────────────
-  const tier = me?.kycTier ?? 'T0';
-  const tierGated = !meLoading && me && tier !== 'T2' && tier !== 'T3';
-
-  if (tierGated) {
-    return (
-      <div className="mx-auto w-full max-w-3xl space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Virtual Cards</h1>
-          <p className="text-sm text-muted-foreground">
-            Issue USD virtual cards for online purchases.
-          </p>
-        </div>
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <ShieldCheck className="h-7 w-7" />
+      {loading ? (
+        <Skeleton className="h-72 w-full" />
+      ) : !isVerified ? (
+        <Card>
+          <CardContent className="flex flex-col items-center gap-4 py-14 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Lock className="size-6" />
             </div>
-            <div className="space-y-1 max-w-sm">
-              <h2 className="text-lg font-semibold">Advanced verification required</h2>
-              <p className="text-sm text-muted-foreground">
-                Issuing virtual cards needs <span className="font-medium text-foreground">T2 verification</span>. Takes about 2 minutes &mdash; ID + selfie &mdash; and you&apos;re ready to spend online.
+            <div>
+              <h2 className="text-base font-semibold">Cards unlock after KYC</h2>
+              <p className="text-sm text-muted-foreground mt-1 max-w-md">
+                Verify your identity first — we issue virtual debit cards once your KYC is approved.
               </p>
             </div>
-            <Badge variant="secondary">You&apos;re currently {tier}</Badge>
             <Button asChild>
-              <Link href="/dashboard/kyc">{tier === 'T0' ? 'Start verification' : 'Upgrade to T2'}</Link>
+              <Link href="/dashboard/kyc">Start KYC</Link>
             </Button>
           </CardContent>
         </Card>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
-      <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Virtual Cards</h1>
-          <p className="text-sm text-muted-foreground">
-            Issue USD virtual cards for online purchases. Requires Advanced KYC.
-          </p>
-        </div>
-        <Button onClick={() => setIssueOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Issue new card
-        </Button>
-      </div>
-
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription className="flex items-center justify-between gap-2">
-            <span>{error}</span>
-            <Button size="sm" variant="outline" onClick={() => void fetchCards()}>Retry</Button>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {loading && (
-        <div className="grid gap-4 md:grid-cols-2">
-          <Skeleton className="aspect-[16/10] w-full rounded-xl" />
-          <Skeleton className="aspect-[16/10] w-full rounded-xl" />
-        </div>
-      )}
-
-      {!loading && cards.length === 0 && (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <CreditCard className="h-7 w-7" />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {/* Virtual card — active */}
+          <Link
+            href="/dashboard/cards/graph"
+            className="group rounded-2xl border bg-card p-5 transition-all hover:border-primary hover:shadow-md focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            <CardArt active />
+            <div className="mt-4 flex items-center justify-between">
+              <div>
+                <p className="text-base font-semibold">Virtual card</p>
+                <p className="text-xs text-muted-foreground">Spend online, fund from your USD balance</p>
+              </div>
+              <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
             </div>
-            <div>
-              <h2 className="text-xl font-semibold">No cards yet</h2>
-              <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Issue a virtual USD card to pay online, subscribe to services, or share with family.
-              </p>
-            </div>
-            <Button size="lg" onClick={() => setIssueOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Issue your first card
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+          </Link>
 
-      {!loading && cards.length > 0 && (
-        <div className="grid gap-5 md:grid-cols-2">
-          {cards.map((card) => (
-            <Card key={card.id} className="overflow-hidden">
-              <CardContent className="space-y-4 p-5">
-                <CardVisual card={card} />
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Daily limit</p>
-                    <p className="font-medium">{formatUsdCents(card.dailyLimitCents)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase text-muted-foreground">Monthly limit</p>
-                    <p className="font-medium">{formatUsdCents(card.monthlyLimitCents)}</p>
-                  </div>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {card.status !== 'TERMINATED' && (
-                    <Button size="sm" variant="outline" onClick={() => void handleFreezeToggle(card)}>
-                      {card.status === 'FROZEN' ? (
-                        <><Unlock className="mr-1.5 h-3.5 w-3.5" /> Unfreeze</>
-                      ) : (
-                        <><Snowflake className="mr-1.5 h-3.5 w-3.5" /> Freeze</>
-                      )}
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-red-600 hover:text-red-700"
-                    disabled={card.status === 'TERMINATED'}
-                    onClick={() => setTerminateTarget(card)}
-                  >
-                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-                    Terminate
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Issue dialog */}
-      <Dialog open={issueOpen} onOpenChange={(o) => { setIssueOpen(o); if (!o) setIssuePin(''); }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Issue a new virtual card</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="daily">Daily limit (USD)</Label>
-              <Input id="daily" type="number" min="0" className="mt-1.5" value={dailyLimitUsd} onChange={(e) => setDailyLimitUsd(e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="monthly">Monthly limit (USD)</Label>
-              <Input id="monthly" type="number" min="0" className="mt-1.5" value={monthlyLimitUsd} onChange={(e) => setMonthlyLimitUsd(e.target.value)} />
-            </div>
-            <div>
-              <Label htmlFor="pin">Transaction PIN</Label>
-              <Input
-                id="pin"
-                type="password"
-                inputMode="numeric"
-                className="mt-1.5 text-center font-mono tracking-[0.4em]"
-                maxLength={6}
-                placeholder="••••••"
-                value={issuePin}
-                onChange={(e) => setIssuePin(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-              />
-              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Shield className="h-3 w-3" /> Required to issue a card.
-              </p>
+          {/* Physical card — coming soon, non-interactive */}
+          <div
+            aria-disabled="true"
+            className="rounded-2xl border bg-muted/40 p-5 opacity-80 cursor-not-allowed"
+          >
+            <CardArt />
+            <div className="mt-4 flex items-center justify-between">
+              <div>
+                <p className="text-base font-semibold text-muted-foreground">Physical card</p>
+                <p className="text-xs text-muted-foreground">Tap-to-pay anywhere Visa works</p>
+              </div>
+              <Badge variant="secondary" className="text-[10px] uppercase tracking-wider">Coming soon</Badge>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIssueOpen(false)}>Cancel</Button>
-            <Button disabled={issuePin.length !== 6 || issuing} onClick={handleIssue}>
-              {issuing ? <><RefreshCw className="mr-2 h-4 w-4 animate-spin" /> Issuing...</> : 'Issue card'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Terminate dialog */}
-      <Dialog open={!!terminateTarget} onOpenChange={(o) => { if (!o) { setTerminateTarget(null); setTerminatePin(''); } }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="h-4 w-4 text-red-600" />
-              Terminate card permanently?
-            </DialogTitle>
-          </DialogHeader>
-          {terminateTarget && (
-            <div className="space-y-4">
-              <Alert variant="destructive">
-                <AlertTitle>This cannot be undone.</AlertTitle>
-                <AlertDescription>
-                  Card •••• {terminateTarget.last4} will be permanently blocked.
-                  Any pending authorizations will still clear.
-                </AlertDescription>
-              </Alert>
-              <div>
-                <Label htmlFor="termpin">Transaction PIN</Label>
-                <Input
-                  id="termpin"
-                  type="password"
-                  inputMode="numeric"
-                  className="mt-1.5 text-center font-mono tracking-[0.4em]"
-                  maxLength={6}
-                  placeholder="••••••"
-                  value={terminatePin}
-                  onChange={(e) => setTerminatePin(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))}
-                />
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTerminateTarget(null)}>Cancel</Button>
-            <Button
-              variant="destructive"
-              disabled={terminatePin.length !== 6 || terminating}
-              onClick={handleTerminate}
-            >
-              {terminating ? 'Terminating...' : 'Yes, terminate'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </div>
-  );
+  )
+}
+
+/** Stylised card artwork. Active = inky gradient with "FrenzPay" + Visa-ish
+ *  brand tag; disabled = washed-out grey for the Coming-soon variant. */
+function CardArt({ active = false }: { active?: boolean }) {
+  return (
+    <div
+      className={`relative aspect-[16/10] w-full overflow-hidden rounded-xl shadow-sm ${
+        active
+          ? 'bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-950 text-white'
+          : 'bg-gradient-to-br from-zinc-200 via-zinc-100 to-zinc-200 text-zinc-400 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-800 dark:text-zinc-500'
+      }`}
+    >
+      {active && (
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(99,102,241,0.25),transparent_55%)]" />
+      )}
+      <div className="relative flex h-full flex-col justify-between p-4">
+        <div className="flex items-start justify-between">
+          <span className={`text-[11px] font-semibold uppercase tracking-[0.18em] ${active ? '' : 'opacity-60'}`}>
+            FrenzPay
+          </span>
+          <CreditCard className="size-4 opacity-80" />
+        </div>
+        <div className="font-mono text-[13px] tracking-[0.32em] opacity-90">
+          •••• •••• •••• {active ? '••••' : '----'}
+        </div>
+      </div>
+    </div>
+  )
 }
