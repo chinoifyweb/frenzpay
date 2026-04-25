@@ -9,6 +9,15 @@ export const metadata: Metadata = {
   description: 'Get paid globally, withdraw in USDT or to any Nigerian bank account.',
 }
 
+// Auth pages must NEVER be statically prerendered + cached. The default
+// Next.js prerender sets `Cache-Control: s-maxage=31536000` which lets
+// LiteSpeed (and Cloudflare) cache the response. Their `vary`-header
+// handling on RSC requests is unreliable — once an RSC binary stream is
+// cached against a URL, a later HTML browser request can return the
+// binary body and the user sees garbage on screen.
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex">

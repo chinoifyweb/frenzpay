@@ -396,7 +396,23 @@ function KycForm({
   // submissions usually need at least one fresh photo anyway.
   const [docType, setDocType] = useState<IdType>(prefill?.docKind ?? 'nin')
   const [docNumber, setDocNumber] = useState(prefill?.docNumber ?? '')
-  const [fullLegalName, setFullLegalName] = useState(prefill?.fullLegalName ?? '')
+  // Name is collected as 3 separate fields so KYC review (and any
+  // downstream provider — Graph, Bridge, Sumsub, etc.) can match each
+  // part to the corresponding field on the ID independently. We still
+  // build a single fullLegalName string at submit time for compatibility
+  // with the existing /api/kyc/t2 contract; future server-side splits
+  // can read the dedicated fields off the FormData.
+  const initialName = (prefill?.fullLegalName ?? '').trim().split(/\s+/).filter(Boolean)
+  const [firstName, setFirstName] = useState(initialName[0] ?? '')
+  const [middleName, setMiddleName] = useState(
+    initialName.length >= 3 ? initialName.slice(1, -1).join(' ') : '',
+  )
+  const [lastName, setLastName] = useState(
+    initialName.length >= 2 ? initialName[initialName.length - 1]! : '',
+  )
+  const fullLegalName = [firstName.trim(), middleName.trim(), lastName.trim()]
+    .filter(Boolean)
+    .join(' ')
   const [bvn, setBvn] = useState(prefill?.bvn ?? '')
   const [purposeOfAccount, setPurposeOfAccount] = useState(prefill?.purposeOfAccount ?? '')
   const [sourceOfFunds, setSourceOfFunds] = useState(prefill?.sourceOfFunds ?? '')
@@ -428,7 +444,9 @@ function KycForm({
 
   const canSubmit =
     docNumber.trim().length >= 5 &&
-    fullLegalName.trim().length >= 4 &&
+    firstName.trim().length >= 2 &&
+    lastName.trim().length >= 2 &&
+    fullLegalName.length >= 4 &&
     !!purposeOfAccount &&
     !!sourceOfFunds &&
     addressLine1.trim().length >= 4 &&
@@ -455,7 +473,10 @@ function KycForm({
       const fd = new FormData()
       fd.append('docType', docType)
       fd.append('docNumber', docNumber.trim())
-      fd.append('fullLegalName', fullLegalName.trim())
+      fd.append('fullLegalName', fullLegalName)
+      fd.append('firstName', firstName.trim())
+      fd.append('middleName', middleName.trim())
+      fd.append('lastName', lastName.trim())
       if (bvn.trim()) fd.append('bvn', bvn.trim())
       fd.append('purposeOfAccount', purposeOfAccount)
       fd.append('sourceOfFunds', sourceOfFunds)
@@ -534,16 +555,42 @@ function KycForm({
               autoComplete="off"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="fullLegalName">Full name as printed on ID</Label>
-            <Input
-              id="fullLegalName"
-              value={fullLegalName}
-              onChange={(e) => setFullLegalName(e.target.value)}
-              autoComplete="name"
-            />
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Name as printed on ID</Label>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="space-y-1">
+                <Label htmlFor="firstName" className="text-xs text-muted-foreground font-normal">First name</Label>
+                <Input
+                  id="firstName"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
+                  autoComplete="given-name"
+                  placeholder="e.g. Chioma"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="middleName" className="text-xs text-muted-foreground font-normal">Middle name <span className="text-muted-foreground/70">(optional)</span></Label>
+                <Input
+                  id="middleName"
+                  value={middleName}
+                  onChange={(e) => setMiddleName(e.target.value)}
+                  autoComplete="additional-name"
+                  placeholder="Leave blank if none"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="lastName" className="text-xs text-muted-foreground font-normal">Surname / last name</Label>
+                <Input
+                  id="lastName"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  autoComplete="family-name"
+                  placeholder="e.g. Okafor"
+                />
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Enter your name <span className="font-medium">exactly as it appears on your ID</span> — same spelling, same order, same spacing. If your ID has no middle name, leave it out here too. Mismatches are the #1 reason KYC gets rejected.
+              Enter each part <span className="font-medium">exactly as it appears on your ID</span> — same spelling, same spacing. If your ID has no middle name, leave that box blank. Mismatches are the #1 reason KYC gets rejected.
             </p>
           </div>
         </div>
@@ -568,7 +615,12 @@ function KycForm({
             <Label>What will you use this account for?</Label>
             <Select value={purposeOfAccount} onValueChange={setPurposeOfAccount}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose one" />
+                {/* Base UI's Select.Value renders the raw value by
+                    default. Pass a children render fn so the trigger
+                    shows the human label instead of the enum slug. */}
+                <SelectValue placeholder="Choose one">
+                  {(v: unknown) => PURPOSES.find(p => p.value === v)?.label ?? null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {PURPOSES.map(p => (
@@ -581,7 +633,9 @@ function KycForm({
             <Label>Main source of funds</Label>
             <Select value={sourceOfFunds} onValueChange={setSourceOfFunds}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose one" />
+                <SelectValue placeholder="Choose one">
+                  {(v: unknown) => SOURCES.find(s => s.value === v)?.label ?? null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {SOURCES.map(s => (
@@ -632,7 +686,9 @@ function KycForm({
               <Label>State</Label>
               <Select value={addressState} onValueChange={setAddressState}>
                 <SelectTrigger>
-                  <SelectValue placeholder="State" />
+                  <SelectValue placeholder="State">
+                    {(v: unknown) => NG_STATES.find(s => s.code === v)?.name ?? null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {NG_STATES.map((s) => (
@@ -669,7 +725,9 @@ function KycForm({
               <Label>Employment status</Label>
               <Select value={employmentStatus} onValueChange={setEmploymentStatus}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Choose one" />
+                  <SelectValue placeholder="Choose one">
+                    {(v: unknown) => EMPLOYMENT_STATUSES.find(e => e.value === v)?.label ?? null}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {EMPLOYMENT_STATUSES.map((e) => (
@@ -694,7 +752,9 @@ function KycForm({
             <Label>Expected monthly inflow (USD)</Label>
             <Select value={expectedMonthlyInflowUsd} onValueChange={setExpectedMonthlyInflowUsd}>
               <SelectTrigger>
-                <SelectValue placeholder="Choose a band" />
+                <SelectValue placeholder="Choose a band">
+                  {(v: unknown) => INFLOW_BANDS.find(b => b.value === v)?.label ?? null}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {INFLOW_BANDS.map((b) => (
