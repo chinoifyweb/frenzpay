@@ -48,7 +48,9 @@ jobs:
         run: pnpm test:unit
 
       - name: Generate Prisma client
-        run: pnpm --filter @frenzpay/db prisma generate
+        # Package script is `generate`, not `prisma`. Calls
+        # `prisma generate` under the hood — see packages/db/package.json.
+        run: pnpm --filter @frenzpay/db generate
 
       - name: Build
         run: pnpm --filter @frenzpay/web build
