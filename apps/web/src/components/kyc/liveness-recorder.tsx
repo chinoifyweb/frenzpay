@@ -300,6 +300,54 @@ export function LivenessRecorder({ label, hint, file, onChange }: Props) {
       </div>
       <p className="text-xs text-muted-foreground">{hint}</p>
 
+      {/* Proactive heads-up — shown before any denial happens so the
+          customer knows what's coming. Only renders in the camera-not-
+          yet-active stages (idle / preview); review / recording stages
+          have already cleared the permission so the hint isn't useful
+          there. The denied panel below replaces this when permission
+          is actually blocked. */}
+      {(stage === 'idle' || stage === 'preview') && error !== 'camera_denied' && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50/60 dark:border-blue-900 dark:bg-blue-950/20 px-3 py-2.5 text-xs text-blue-900 dark:text-blue-200 leading-relaxed">
+          <p className="font-medium mb-1">📷 Your browser will ask for camera + microphone</p>
+          <p className="opacity-90">
+            Tap <span className="font-medium">Allow</span> when the prompt appears. If you accidentally tap Block, see the steps below.
+          </p>
+          <details className="mt-1.5">
+            <summary className="cursor-pointer text-blue-700 dark:text-blue-300 hover:underline select-none">
+              How to unblock if you tapped Block
+            </summary>
+            <div className="mt-2 rounded-md bg-white dark:bg-black/30 p-2.5 space-y-2">
+              {isAndroid() ? (
+                <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                  <li>Tap the <span className="font-medium">lock icon</span> at the left of the address bar</li>
+                  <li>Tap <span className="font-medium">Permissions</span> (or <span className="font-medium">Site settings</span>)</li>
+                  <li>Set <span className="font-medium">Camera</span> + <span className="font-medium">Microphone</span> to <span className="font-medium">Allow</span></li>
+                  <li>Come back to this tab and tap <span className="font-medium">Retry camera</span></li>
+                </ol>
+              ) : isIOS() ? (
+                <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                  <li>Tap the <span className="font-medium">aA</span> icon at the left of the address bar</li>
+                  <li>Tap <span className="font-medium">Website Settings</span></li>
+                  <li>Set <span className="font-medium">Camera</span> + <span className="font-medium">Microphone</span> to <span className="font-medium">Allow</span></li>
+                  <li>Reload the page</li>
+                </ol>
+              ) : (
+                <ol className="list-decimal list-inside space-y-0.5 ml-1">
+                  <li>Click the <span className="font-medium">camera</span> or <span className="font-medium">lock</span> icon in the address bar</li>
+                  <li>Set <span className="font-medium">Camera</span> + <span className="font-medium">Microphone</span> to <span className="font-medium">Allow</span></li>
+                  <li>Reload the page</li>
+                </ol>
+              )}
+              {isBrave() && (
+                <p className="border-t border-blue-200/60 dark:border-blue-900/40 pt-1.5 text-[11px]">
+                  <span className="font-semibold">🦁 Brave:</span> the Shields icon (lion) might also block the camera — toggle Shields off for this site if the steps above don&rsquo;t work.
+                </p>
+              )}
+            </div>
+          </details>
+        </div>
+      )}
+
       {/* When camera was denied we show a richer panel with platform-
           specific unblock instructions + Retry button. Other errors
           fall through to the normal red Alert below. */}
