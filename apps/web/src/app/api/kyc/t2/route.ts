@@ -80,12 +80,13 @@ const MIN_DOC_NUMBER_CHARS = 5;
 function validateFile(
   label: string,
   file: File | null,
-  kind: 'image' | 'video-or-image',
+  kind: 'image' | 'video',
 ): string | null {
   if (!file) return `${label} file is required`;
-  const allowed = kind === 'image'
-    ? ALLOWED_IMAGE_MIME
-    : new Set<string>([...ALLOWED_IMAGE_MIME, ...ALLOWED_VIDEO_MIME]);
+  // Liveness is now video-only — a still photo doesn't prove the customer is
+  // live in front of their camera. The browser-side recorder produces a small
+  // webm/mp4 clip; anything else gets rejected here as a defense-in-depth.
+  const allowed = kind === 'image' ? ALLOWED_IMAGE_MIME : ALLOWED_VIDEO_MIME;
   if (!allowed.has(file.type)) {
     return `${label}: unsupported file type ${file.type}`;
   }
@@ -194,7 +195,7 @@ export async function POST(req: NextRequest) {
   const selfieErr = validateFile('selfie', selfie, 'image');
   if (selfieErr) return NextResponse.json({ error: selfieErr }, { status: 422 });
 
-  const livenessErr = validateFile('liveness', liveness, 'video-or-image');
+  const livenessErr = validateFile('liveness', liveness, 'video');
   if (livenessErr) return NextResponse.json({ error: livenessErr }, { status: 422 });
 
   const poaErr = validateFile('proofOfAddress', proofOfAddress, 'image');

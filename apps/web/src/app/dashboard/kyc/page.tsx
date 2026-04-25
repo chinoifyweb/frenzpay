@@ -95,7 +95,10 @@ const SOURCES = [
 ] as const
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
-const VIDEO_OR_IMAGE_TYPES = [...IMAGE_TYPES, 'video/mp4', 'video/webm', 'video/quicktime']
+// Liveness must be a video — a still photo doesn't prove the customer was
+// physically in front of the camera. Mirrors the server-side check in
+// /api/kyc/t2.
+const VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 const MAX_LIVENESS_BYTES = 25 * 1024 * 1024
 
@@ -129,6 +132,17 @@ const EMPLOYMENT_STATUSES = [
   { value: 'student', label: 'Student' },
   { value: 'retired', label: 'Retired' },
   { value: 'other', label: 'Other' },
+] as const
+
+// Expected-monthly-inflow bands. Server stores `expectedMonthlyInflowCents`
+// as USD cents (BigInt) so the values here are the cents amount to send.
+// "above" buckets to a sentinel of 1,000,001 USD-cents-equivalent so it sorts
+// strictly above the $10,000 entry and the admin can easily see the bracket.
+const INFLOW_BANDS = [
+  { value: '50000',     label: 'Up to $500 / month' },
+  { value: '500000',    label: '$500 – $5,000 / month' },
+  { value: '1000000',   label: '$5,000 – $10,000 / month' },
+  { value: '1000001',   label: 'Above $10,000 / month' },
 ] as const
 
 function fmtBytes(b: number): string {
@@ -353,9 +367,8 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
       // background_information
       fd.append('employmentStatus', employmentStatus)
       fd.append('occupation', occupation.trim())
-      // Express inflow in USD cents — server stores as BigInt cents.
-      const inflowCents = Math.round(parseFloat(expectedMonthlyInflowUsd) * 100)
-      fd.append('expectedMonthlyInflowCents', String(inflowCents))
+      // expectedMonthlyInflowUsd holds the cents value directly now (band picker)
+      fd.append('expectedMonthlyInflowCents', expectedMonthlyInflowUsd)
 
       fd.append('idFront', idFront!)
       if (idBack) fd.append('idBack', idBack)
@@ -572,17 +585,19 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="expectedMonthlyInflowUsd">Expected monthly inflow (USD)</Label>
-            <Input
-              id="expectedMonthlyInflowUsd"
-              type="number"
-              min="0"
-              step="100"
-              value={expectedMonthlyInflowUsd}
-              onChange={(e) => setExpectedMonthlyInflowUsd(e.target.value)}
-            />
+            <Label>Expected monthly inflow (USD)</Label>
+            <Select value={expectedMonthlyInflowUsd} onValueChange={setExpectedMonthlyInflowUsd}>
+              <SelectTrigger>
+                <SelectValue placeholder="Choose a band" />
+              </SelectTrigger>
+              <SelectContent>
+                {INFLOW_BANDS.map((b) => (
+                  <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
-              Rough estimate of funds you expect to receive per month in USD.
+              Rough estimate of USD you expect to receive per month.
             </p>
           </div>
         </div>
@@ -615,9 +630,9 @@ function KycForm({ onSubmitted }: { onSubmitted: () => void }) {
             onChange={setSelfie}
           />
           <FileUpload
-            label="Liveness"
-            hint="Short video of yourself (3–5 s) — say your name and today’s date. Or a fresh photo with your thumb clearly on your chin."
-            accept={VIDEO_OR_IMAGE_TYPES}
+            label="Liveness video"
+            hint="Short video of yourself (3–5 s) — say your name and today’s date. Video only; photos won’t be accepted."
+            accept={VIDEO_TYPES}
             maxBytes={MAX_LIVENESS_BYTES}
             file={liveness}
             onChange={setLiveness}

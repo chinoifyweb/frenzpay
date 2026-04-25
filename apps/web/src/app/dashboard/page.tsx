@@ -130,37 +130,80 @@ export default function DashboardOverview() {
         </h1>
       </div>
 
-      {/* KYC banner — hidden at T3 */}
-      {me && kycTier !== 'T3' && (
-        <Card className="border-primary/20 bg-primary/5">
-          <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-start gap-3 flex-1">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="font-medium">
-                    {kycTier === 'T0' ? 'Verify your identity to start using FrenzPay' : `You’re ${KYC_LABEL[kycTier]} verified`}
-                  </p>
-                  <Badge variant="secondary" className="text-[10px]">{kycTier}</Badge>
+      {/* KYC banner — hidden at T3.
+          The four states it can show:
+            - PENDING_REVIEW   → "Under review, expect an email within 24h" (no CTA)
+            - REJECTED         → "Verification declined, please resubmit" (Resubmit CTA)
+            - T0 + NOT_STARTED → "Verify your identity" (Start KYC CTA)
+            - T1/T2 verified   → "Upgrade to next tier" (Continue CTA)
+          The PENDING_REVIEW + REJECTED branches are new — previously the banner
+          read solely off kycTier (which stays T0 until approved), so a customer
+          who'd already submitted still saw "Verify your identity → Start KYC". */}
+      {me && kycTier !== 'T3' && (() => {
+        const kycStatus = me.kycStatus
+        const isPending = kycStatus === 'PENDING_REVIEW'
+        const isRejected = kycStatus === 'REJECTED'
+        const tone = isPending
+          ? 'border-sky-300/40 bg-sky-50/70 dark:border-sky-900 dark:bg-sky-950/20'
+          : isRejected
+            ? 'border-red-300/40 bg-red-50/70 dark:border-red-900 dark:bg-red-950/20'
+            : 'border-primary/20 bg-primary/5'
+        const iconWrap = isPending
+          ? 'bg-sky-500/15 text-sky-600 dark:text-sky-400'
+          : isRejected
+            ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+            : 'bg-primary/10 text-primary'
+        const heading = isPending
+          ? 'Verification under review'
+          : isRejected
+            ? 'Verification declined'
+            : kycTier === 'T0'
+              ? 'Verify your identity to start using FrenzPay'
+              : `You’re ${KYC_LABEL[kycTier]} verified`
+        const subtext = isPending
+          ? 'We’ve received your documents — our team reviews every submission manually. You’ll get an email within 24 hours with the outcome.'
+          : isRejected
+            ? 'Your last submission needs a fresh attempt. Open KYC to see the reason and resubmit.'
+            : kycTier === 'T0'
+              ? 'Complete KYC to receive, send, save, and withdraw.'
+              : `Upgrade to ${KYC_LABEL[KYC_TIERS[tierIndex + 1]!]} for higher limits.`
+        const showCta = !isPending  // pending = nothing for the user to do
+        const ctaLabel = isRejected
+          ? 'View reason'
+          : kycTier === 'T0'
+            ? 'Start KYC'
+            : 'Continue'
+        return (
+          <Card className={tone}>
+            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-start gap-3 flex-1">
+                <div className={`flex h-10 w-10 items-center justify-center rounded-full shrink-0 ${iconWrap}`}>
+                  <ShieldCheck className="h-5 w-5" />
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {kycTier === 'T0'
-                    ? 'Complete KYC to receive, send, save, and withdraw.'
-                    : `Upgrade to ${KYC_LABEL[KYC_TIERS[tierIndex + 1]!]} for higher limits.`}
-                </p>
-                <div className="mt-3 max-w-sm">
-                  <Progress value={kycProgress} className="h-1.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-medium">{heading}</p>
+                    <Badge variant="secondary" className="text-[10px]">
+                      {isPending ? 'Pending review' : isRejected ? 'Action needed' : kycTier}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{subtext}</p>
+                  {!isPending && !isRejected && (
+                    <div className="mt-3 max-w-sm">
+                      <Progress value={kycProgress} className="h-1.5" />
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-            <Button asChild>
-              <Link href="/dashboard/kyc">{kycTier === 'T0' ? 'Start KYC' : 'Continue'}</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+              {showCta && (
+                <Button asChild>
+                  <Link href="/dashboard/kyc">{ctaLabel}</Link>
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        )
+      })()}
 
       {/* Balances */}
       <div>
@@ -188,7 +231,13 @@ export default function DashboardOverview() {
                 </p>
               </div>
               {kycTier === 'T0' ? (
-                <Button asChild><Link href="/dashboard/kyc">Complete KYC first</Link></Button>
+                me?.kycStatus === 'PENDING_REVIEW' ? (
+                  <Badge variant="secondary" className="gap-1.5">Pending review · usually under 24h</Badge>
+                ) : me?.kycStatus === 'REJECTED' ? (
+                  <Button variant="destructive" asChild><Link href="/dashboard/kyc">Resubmit KYC</Link></Button>
+                ) : (
+                  <Button asChild><Link href="/dashboard/kyc">Complete KYC first</Link></Button>
+                )
               ) : (
                 <Button onClick={activateWallet} disabled={provisioning}>
                   {provisioning ? 'Activating...' : 'Activate wallet'}
