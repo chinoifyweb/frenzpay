@@ -58,7 +58,7 @@ export async function GET(
   }
 
   // Parallel fetch of supporting data
-  const [accounts, recentTx, recentAdminActions, kycSubmissions, withdrawals] =
+  const [accounts, externalAccounts, recentTx, recentAdminActions, kycSubmissions, withdrawals] =
     await Promise.all([
       prisma.account.findMany({
         where: { ownerType: 'USER', ownerId: id },
@@ -69,6 +69,23 @@ export async function GET(
           createdAt: true,
         },
         orderBy: { currency: 'asc' },
+      }),
+      prisma.userExternalAccount.findMany({
+        where: { userId: id, type: 'virtual_account' },
+        select: {
+          id: true,
+          provider: true,
+          externalAccountId: true,
+          currency: true,
+          accountName: true,
+          accountNumber: true,
+          routingNumber: true,
+          bankName: true,
+          status: true,
+          createdAt: true,
+          metadata: true,
+        },
+        orderBy: { createdAt: 'asc' },
       }),
       prisma.transaction.findMany({
         where: {
@@ -157,6 +174,22 @@ export async function GET(
       id: a.id,
       currency: a.currency,
       subtype: a.subtype,
+      createdAt: a.createdAt.toISOString(),
+    })),
+    // Virtual / external accounts (Graph-issued bank accounts) — one
+    // panel per currency on the user detail page so the admin can
+    // copy the account number to send to the customer / for support.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    externalAccounts: externalAccounts.map((a: any) => ({
+      id: a.id,
+      provider: a.provider,
+      externalAccountId: a.externalAccountId,
+      currency: a.currency,
+      accountName: a.accountName,
+      accountNumber: a.accountNumber,
+      routingNumber: a.routingNumber,
+      bankName: a.bankName,
+      status: a.status,
       createdAt: a.createdAt.toISOString(),
     })),
     recentTransactions: recentTx.map((t: (typeof recentTx)[number]) => ({

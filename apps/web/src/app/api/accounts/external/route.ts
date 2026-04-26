@@ -30,6 +30,7 @@ export async function GET() {
     select: {
       id: true,
       provider: true,
+      externalAccountId: true,
       type: true,
       currency: true,
       accountName: true,
@@ -37,6 +38,7 @@ export async function GET() {
       routingNumber: true,
       bankName: true,
       status: true,
+      createdAt: true,
       metadata: true,
     },
   });
@@ -48,6 +50,11 @@ export async function GET() {
       return {
         id: a.id,
         provider: a.provider,
+        // Upstream provider's account id (e.g. Graph's bank_account.id).
+        // Surfaced so the customer can quote it to support if needed and
+        // so the UI can show a stable identifier while account_number is
+        // still being minted upstream.
+        externalAccountId: a.externalAccountId,
         type: a.type,
         currency: a.currency,
         /** The currency the user picked (USD / EUR) — for display. Settlement
@@ -58,6 +65,7 @@ export async function GET() {
         routingNumber: a.routingNumber,
         bankName: a.bankName,
         status: a.status,
+        createdAt: a.createdAt.toISOString(),
       };
     }),
   });

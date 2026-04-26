@@ -31,6 +31,9 @@ import {
   Globe,
   Calendar,
   KeyRound,
+  Wallet,
+  Copy,
+  RefreshCw,
 } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -82,6 +85,18 @@ interface UserDetail {
     id: string;
     currency: string;
     subtype: string;
+    createdAt: string;
+  }>;
+  externalAccounts: Array<{
+    id: string;
+    provider: string;
+    externalAccountId: string | null;
+    currency: string;
+    accountName: string | null;
+    accountNumber: string | null;
+    routingNumber: string | null;
+    bankName: string | null;
+    status: string;
     createdAt: string;
   }>;
   recentTransactions: Array<{
@@ -154,6 +169,9 @@ export default function AdminUserDetailPage({
   const { id } = use(params);
   const [data, setData] = useState<UserDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  // Per-account refresh tracking — clicked Refresh shows a spinner
+  // on that one row only.
+  const [refreshingAccountId, setRefreshingAccountId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -194,7 +212,7 @@ export default function AdminUserDetailPage({
     );
   }
 
-  const { user, accounts, recentTransactions, recentAdminActions, kycSubmissions, withdrawals } =
+  const { user, accounts, externalAccounts, recentTransactions, recentAdminActions, kycSubmissions, withdrawals } =
     data;
 
   const fullName =
@@ -353,6 +371,84 @@ export default function AdminUserDetailPage({
               )}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      {/* Virtual accounts (Graph-issued bank accounts) — Graph-style
+          panels: one per currency, with status, account number,
+          routing number, bank name, and a Refresh button that pulls
+          the latest from Graph (useful when a freshly-provisioned
+          USD account is still 'pending' upstream and the bank
+          details haven't populated yet). */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Wallet className="size-4" />
+              Virtual Accounts
+            </CardTitle>
+            <span className="text-xs text-muted-foreground">{externalAccounts.length} account{externalAccounts.length === 1 ? '' : 's'}</span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {externalAccounts.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground italic">
+              No virtual accounts provisioned yet.
+            </p>
+          ) : (
+            externalAccounts.map((ea) => {
+              const statusTone =
+                ea.status === 'active' || ea.status === 'success'
+                  ? 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-400 dark:border-emerald-900'
+                  : ea.status === 'pending'
+                    ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-400 dark:border-amber-900'
+                    : ea.status === 'suspended' || ea.status === 'closed'
+                      ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-400 dark:border-red-900'
+                      : 'bg-muted text-muted-foreground';
+              const isRefreshing = refreshingAccountId === ea.id;
+              return (
+                <div key={ea.id} className="rounded-lg border bg-muted/20 p-4 space-y-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="font-semibold">{ea.currency}</Badge>
+                    <Badge variant="outline" className={statusTone}>
+                      {ea.status === 'pending' ? 'Pending' : ea.status === 'success' || ea.status === 'active' ? 'Active' : ea.status}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground ml-auto">Created {formatDateTime(ea.createdAt)}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={async () => {
+                        setRefreshingAccountId(ea.id);
+                        try {
+                          const res = await fetch(`/api/admin/accounts/${ea.id}/refresh`, { method: 'POST' });
+                          const json = await res.json().catch(() => ({}));
+                          if (!res.ok) throw new Error(json.error ?? `Refresh failed (${res.status})`);
+                          toast.success(json.accountNumber ? 'Bank details fetched.' : `Status: ${json.status}. Bank details not yet ready.`);
+                          await fetchData();
+                        } catch (err) {
+                          toast.error(err instanceof Error ? err.message : 'Refresh failed');
+                        } finally {
+                          setRefreshingAccountId(null);
+                        }
+                      }}
+                      disabled={isRefreshing}
+                      className="h-7 gap-1.5"
+                    >
+                      {isRefreshing ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+                      Refresh
+                    </Button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    <DetailRow label="Account ID" value={ea.externalAccountId} mono onCopy />
+                    <DetailRow label="Bank" value={ea.bankName} />
+                    <DetailRow label="Account name" value={ea.accountName} />
+                    <DetailRow label="Account number" value={ea.accountNumber} mono onCopy />
+                    {ea.routingNumber && <DetailRow label="Routing number" value={ea.routingNumber} mono onCopy />}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </CardContent>
       </Card>
 
@@ -905,5 +1001,48 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * Reusable label/value row for the Virtual Accounts panel. Shows
+ * `— provisioning` placeholder when value is null (Graph hasn't
+ * populated the field yet) and a copy button when `onCopy` is set.
+ */
+function DetailRow({
+  label,
+  value,
+  mono,
+  onCopy,
+}: {
+  label: string;
+  value: string | null;
+  mono?: boolean;
+  onCopy?: boolean;
+}) {
+  const display = value ?? null;
+  const copy = () => {
+    if (!display) return;
+    navigator.clipboard.writeText(display).then(
+      () => toast.success('Copied'),
+      () => toast.error('Copy failed'),
+    );
+  };
+  return (
+    <div className="flex items-center gap-2 min-w-0">
+      <span className="text-xs uppercase tracking-wider text-muted-foreground shrink-0 w-32">{label}</span>
+      {display ? (
+        <button
+          type="button"
+          onClick={onCopy ? copy : undefined}
+          className={`min-w-0 truncate text-left ${mono ? 'font-mono text-xs' : ''} ${onCopy ? 'hover:text-primary inline-flex items-center gap-1.5' : ''}`}
+        >
+          <span className="truncate">{display}</span>
+          {onCopy && <Copy className="size-3 opacity-50 shrink-0" />}
+        </button>
+      ) : (
+        <span className="italic text-muted-foreground/70 text-xs">— provisioning</span>
+      )}
+    </div>
   );
 }
