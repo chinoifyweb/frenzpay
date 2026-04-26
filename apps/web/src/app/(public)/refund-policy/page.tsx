@@ -28,28 +28,28 @@ export default function RefundPolicyPage() {
 
         <div className="space-y-10">
           <Section title="1. Overview">
-            <p>FrenzPay facilitates the receipt of international payments into virtual bank accounts and the withdrawal of funds in USDT (cryptocurrency). Due to the nature of financial transactions and cryptocurrency conversions, this policy explains when refunds may be available, how disputes are handled, and the limitations of reversals in our system.</p>
+            <p>FrenzPay facilitates the receipt of international payments into virtual bank accounts and the withdrawal of funds to Nigerian bank accounts. This policy explains when refunds may be available, how disputes are handled, and the limitations of reversals in our system.</p>
             <p>We are committed to resolving disputes fairly and transparently. Please read this policy carefully and contact us if you have questions.</p>
           </Section>
 
           <Section title="2. Deposits / Incoming Payments">
             <h3>2.1 Received Funds</h3>
-            <p>Funds received into your Frenz Pay virtual account (USD, GBP, or EUR) are credited to your account balance. FrenzPay does not charge fees for incoming deposits.</p>
+            <p>Funds received into your Frenz Pay virtual account (USD, EUR, or NGN) are credited to your account balance. FrenzPay does not charge fees for incoming deposits.</p>
             <h3>2.2 Incorrect or Unauthorized Deposits</h3>
             <p>If funds are received in your account from an unauthorized or erroneous source, we are obligated to cooperate with the sending institution to return those funds. FrenzPay reserves the right to reverse or freeze such deposits pending investigation.</p>
             <h3>2.3 Failed Deposits</h3>
             <p>If a sender initiates a payment that fails to arrive in your account, the issue must be resolved between the sender and their financial institution. Please provide us with the sender&apos;s transaction reference so we can assist in tracing the funds.</p>
           </Section>
 
-          <Section title="3. USDT Withdrawals">
-            <h3>3.1 Confirmed Withdrawals Are Final</h3>
-            <p>Once a USDT withdrawal has been confirmed on the blockchain network, <strong>it cannot be reversed or refunded</strong>. Cryptocurrency transactions are irreversible by nature. Please double-check your wallet address before confirming any withdrawal.</p>
-            <h3>3.2 Incorrect Wallet Address</h3>
-            <p>If you enter an incorrect wallet address and the withdrawal is processed, FrenzPay cannot recover or reverse the funds. Users are solely responsible for ensuring the accuracy of their withdrawal addresses.</p>
+          <Section title="3. Bank Withdrawals">
+            <h3>3.1 Settled Withdrawals Are Final</h3>
+            <p>Once a withdrawal has been settled to your Nigerian bank account, <strong>it cannot be reversed or refunded</strong> by FrenzPay. Please double-check your bank account details before confirming any withdrawal.</p>
+            <h3>3.2 Incorrect Bank Details</h3>
+            <p>If you enter incorrect bank account details and the withdrawal is processed to a valid third-party account, FrenzPay cannot guarantee recovery of the funds. Users are responsible for ensuring the accuracy of their withdrawal details. We will, however, work with the receiving bank where possible to attempt recovery.</p>
             <h3>3.3 Withdrawal Still Processing</h3>
-            <p>If your withdrawal has not yet been broadcast to the blockchain (i.e., status is &ldquo;pending&rdquo; or &ldquo;processing&rdquo;), contact us immediately at support@frenzpay.co. We may be able to cancel the transaction before it is finalized.</p>
-            <h3>3.4 Network Failures</h3>
-            <p>In rare cases of technical failures or network errors that result in funds not being delivered, we will investigate within 48 hours and credit your account if the funds were deducted but not transmitted.</p>
+            <p>If your withdrawal has not yet been sent to the receiving bank (i.e., status is &ldquo;pending&rdquo; or &ldquo;processing&rdquo;), contact us immediately at support@frenzpay.co. We may be able to cancel the transaction before it is finalized.</p>
+            <h3>3.4 Failed Transfers</h3>
+            <p>In rare cases of technical failures or bank rejections that result in funds not being delivered, we will investigate within 48 hours and credit your account if the funds were deducted but not transmitted.</p>
           </Section>
 
           <Section title="4. Platform Fees">
@@ -58,7 +58,7 @@ export default function RefundPolicyPage() {
             <ul>
               <li><strong>Non-refundable</strong> once a transaction is completed</li>
               <li><strong>Refundable</strong> if the transaction failed due to a FrenzPay system error</li>
-              <li><strong>Refundable</strong> if a withdrawal was cancelled before blockchain confirmation (at our discretion)</li>
+              <li><strong>Refundable</strong> if a withdrawal was cancelled before being sent to the receiving bank (at our discretion)</li>
             </ul>
             <h3>4.2 Erroneous Fee Charges</h3>
             <p>If you believe you were charged incorrectly (e.g., wrong fee rate applied), contact us within 30 days with your transaction reference. We will investigate and issue a credit to your account if the error is confirmed.</p>
@@ -72,7 +72,7 @@ export default function RefundPolicyPage() {
               <li>Enable or verify your 2FA settings</li>
               <li>Provide us with all relevant transaction details</li>
             </ol>
-            <p>We will investigate within 5 business days. If we determine unauthorized access occurred through no fault of your own, we will work to remediate the issue to the extent possible. Note: USDT transactions already on the blockchain cannot be recovered regardless of the circumstances.</p>
+            <p>We will investigate within 5 business days. If we determine unauthorized access occurred through no fault of your own, we will work to remediate the issue to the extent possible. Note: withdrawals already settled to a third-party bank account may not be recoverable.</p>
           </Section>
 
           <Section title="6. Dispute Resolution Process">

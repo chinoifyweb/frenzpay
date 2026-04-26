@@ -3,9 +3,8 @@
 import Link from "next/link";
 import {
   DollarSign,
-  PoundSterling,
   Euro,
-  ArrowUpRight,
+  Building2,
   ShieldCheck,
   LayoutDashboard,
 } from "lucide-react";
@@ -29,21 +28,6 @@ const features = [
     align: "left" as const,
   },
   {
-    icon: PoundSterling,
-    title: "Virtual GBP Account",
-    subtitle: "Receive payments in British Pounds",
-    description:
-      "Get a UK bank account with sort code and account number. Accept Faster Payments for instant transfers and SWIFT for international payments from UK-based clients and companies.",
-    details: [
-      "UK sort code and account number",
-      "Faster Payments (instant)",
-      "SWIFT international transfers",
-      "BACS payments supported",
-      "Free incoming deposits",
-    ],
-    align: "right" as const,
-  },
-  {
     icon: Euro,
     title: "Virtual EUR Account",
     subtitle: "Receive payments in Euros",
@@ -56,23 +40,23 @@ const features = [
       "SWIFT international payments",
       "Zero deposit fees",
     ],
-    align: "left" as const,
+    align: "right" as const,
   },
   {
-    icon: ArrowUpRight,
-    title: "USDT Withdrawals",
-    subtitle: "Convert and withdraw to crypto",
+    icon: Building2,
+    title: "Naira Withdrawals",
+    subtitle: "Cash out to your Nigerian bank",
     description:
-      "Convert your USD, GBP, or EUR balance to USDT and withdraw to any compatible wallet. Choose TRC-20 for the lowest fees or ERC-20 for maximum compatibility. Withdrawals typically complete in under 5 minutes.",
+      "Convert your USD or EUR balance to Naira and send it directly to any Nigerian bank account — GTBank, Access, Zenith, First Bank, UBA, and more. Same-day settlement, no extra bank charges.",
     details: [
-      "TRC-20 network (lowest fees)",
-      "ERC-20 network supported",
-      "Competitive FX rates (0.5% spread)",
+      "Any Nigerian bank account",
+      "Same-day settlement",
+      "Competitive NGN rates (0.5% spread)",
       "1.5% withdrawal fee",
       "Minimum withdrawal: $10",
-      "Processed in under 5 minutes",
+      "No extra bank charges",
     ],
-    align: "right" as const,
+    align: "left" as const,
   },
   {
     icon: ShieldCheck,
@@ -88,7 +72,7 @@ const features = [
       "Complete audit trails",
       "SOC 2 compliance (in progress)",
     ],
-    align: "left" as const,
+    align: "right" as const,
   },
   {
     icon: LayoutDashboard,
@@ -104,7 +88,7 @@ const features = [
       "Referral tracking and rewards",
       "Mobile-optimized interface",
     ],
-    align: "right" as const,
+    align: "left" as const,
   },
 ];
 
@@ -122,9 +106,9 @@ export default function FeaturesPage() {
             <span className="text-primary">global payments</span>
           </h1>
           <p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-            Virtual bank accounts in three major currencies, instant USDT
-            withdrawals, and bank-grade security. Built for freelancers, remote
-            workers, and creators across Africa.
+            Virtual bank accounts in major currencies, fast Naira withdrawals,
+            and bank-grade security. Built for freelancers, remote workers, and
+            creators across Africa.
           </p>
         </div>
       </section>

@@ -6,7 +6,7 @@ export const metadata: Metadata = {
     template: '%s | Frenz Pay',
     default: 'Frenz Pay',
   },
-  description: 'Get paid globally, withdraw in USDT or to any Nigerian bank account.',
+  description: 'Get paid globally, withdraw to any Nigerian bank account.',
 }
 
 // Auth pages must NEVER be statically prerendered + cached. The default
@@ -37,24 +37,24 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       <div className="hidden lg:flex lg:flex-1 bg-gradient-to-br from-primary/90 to-secondary items-center justify-center p-12">
         <div className="max-w-md text-white">
           <h2 className="text-3xl font-bold mb-4">
-            Get paid globally. Withdraw in USDT or Naira.
+            Get paid globally. Withdraw to your Naira account.
           </h2>
           <p className="text-white/80 mb-8">
             Join thousands of freelancers and remote workers who use Frenz Pay to
-            receive international payments — and cash out however suits them.
+            receive international payments — and cash out to their Nigerian bank.
           </p>
           <div className="space-y-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <span className="text-white font-semibold">&#10003;</span>
               </div>
-              <span>Free USD, GBP &amp; EUR virtual accounts</span>
+              <span>Free USD, EUR &amp; NGN virtual accounts</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">
                 <span className="text-white font-semibold">&#10003;</span>
               </div>
-              <span>Withdraw to USDT (TRC-20/ERC-20) or any Nigerian bank</span>
+              <span>Withdraw to any Nigerian bank account</span>
             </div>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center shrink-0">

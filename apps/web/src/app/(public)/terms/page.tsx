@@ -58,14 +58,14 @@ export default function TermsPage() {
           <p>Frenz Pay provides the following services:</p>
           <ul className="list-disc pl-6">
             <li>
-              Virtual bank accounts in USD, GBP, and EUR for receiving
+              Virtual bank accounts in USD, EUR, and NGN for receiving
               international payments
             </li>
             <li>
-              Currency conversion from fiat currencies to USDT (Tether)
+              Currency conversion between supported fiat currencies (USD, EUR, NGN)
             </li>
             <li>
-              USDT withdrawal to external wallets via TRC-20 and ERC-20 networks
+              Withdrawal of funds to Nigerian bank accounts
             </li>
           </ul>
           <p>
@@ -83,7 +83,7 @@ export default function TermsPage() {
           <ul className="list-disc pl-6">
             <li>Account creation: Free</li>
             <li>Receiving payments: Free</li>
-            <li>USDT withdrawal: 1.5% of withdrawal amount</li>
+            <li>Naira bank withdrawal: 1.5% of withdrawal amount</li>
             <li>FX conversion: 0.5% spread</li>
           </ul>
 

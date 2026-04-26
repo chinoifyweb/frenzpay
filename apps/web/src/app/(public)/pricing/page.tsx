@@ -11,9 +11,9 @@ import {
 const pricingRows = [
   { feature: "Account creation", fee: "Free", highlight: true },
   { feature: "Account maintenance", fee: "Free", highlight: false },
-  { feature: "Receiving payments (USD, GBP, EUR)", fee: "Free", highlight: true },
-  { feature: "USDT withdrawal", fee: "1.5%", highlight: false },
-  { feature: "FX conversion (to USDT)", fee: "0.5% spread", highlight: false },
+  { feature: "Receiving payments (USD, EUR, NGN)", fee: "Free", highlight: true },
+  { feature: "Naira bank withdrawal", fee: "1.5%", highlight: false },
+  { feature: "FX conversion (to NGN)", fee: "0.5% spread", highlight: false },
   { feature: "Minimum withdrawal", fee: "$10", highlight: false },
   { feature: "Maximum withdrawal", fee: "No limit", highlight: true },
   { feature: "KYC verification", fee: "Free", highlight: false },
@@ -28,12 +28,12 @@ const faqs = [
   {
     question: "How is the 1.5% withdrawal fee calculated?",
     answer:
-      "The 1.5% fee is calculated on the USDT amount you withdraw. For example, if you withdraw $1,000 worth of USDT, the fee would be $15. The fee is deducted automatically from your withdrawal amount.",
+      "The 1.5% fee is calculated on the amount you withdraw. For example, if you withdraw $1,000 to your Naira bank account, the fee would be $15. The fee is deducted automatically from your withdrawal amount.",
   },
   {
     question: "What does the 0.5% FX spread mean?",
     answer:
-      "When converting your USD, GBP, or EUR balance to USDT, we apply a 0.5% spread on the market exchange rate. This is significantly lower than traditional banks and most competitors.",
+      "When converting your USD or EUR balance to Naira, we apply a 0.5% spread on the market exchange rate. This is significantly lower than traditional banks and most competitors.",
   },
   {
     question: "Are there any hidden fees?",
@@ -129,9 +129,9 @@ export default function PricingPage() {
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
               {[
                 "Virtual USD account",
-                "Virtual GBP account",
                 "Virtual EUR account",
-                "USDT withdrawals (TRC-20 & ERC-20)",
+                "Virtual NGN account",
+                "Withdraw to any Nigerian bank",
                 "Real-time notifications",
                 "Transaction history & exports",
                 "Two-factor authentication",

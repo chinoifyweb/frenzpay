@@ -20,17 +20,17 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: "Frenz Pay — Get Paid Globally, Withdraw in USDT",
+    default: "Frenz Pay — Get Paid Globally, Withdraw to Your Bank",
     template: "%s | Frenz Pay",
   },
   description:
-    "Receive payments from anywhere in the world with virtual USD, GBP, and EUR accounts. Withdraw your earnings in USDT instantly.",
+    "Receive payments from anywhere in the world with virtual USD, EUR, and NGN accounts. Withdraw your earnings directly to your Nigerian bank account.",
   keywords: [
     "payment",
     "fintech",
     "virtual account",
-    "USDT",
-    "crypto",
+    "USD account",
+    "EUR account",
     "freelancer",
     "global payments",
     "Nigeria",
@@ -50,18 +50,18 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
   },
   openGraph: {
-    title: "Frenz Pay — Get Paid Globally, Withdraw in USDT",
+    title: "Frenz Pay — Get Paid Globally, Withdraw to Your Bank",
     description:
-      "Receive payments from anywhere in the world with virtual USD, GBP, and EUR accounts.",
+      "Receive payments from anywhere in the world with virtual USD, EUR, and NGN accounts.",
     url: "https://frenzpay.co",
     siteName: "Frenz Pay",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Frenz Pay — Get Paid Globally, Withdraw in USDT",
+    title: "Frenz Pay — Get Paid Globally, Withdraw to Your Bank",
     description:
-      "Receive payments from anywhere in the world with virtual USD, GBP, and EUR accounts.",
+      "Receive payments from anywhere in the world with virtual USD, EUR, and NGN accounts.",
   },
 }
 

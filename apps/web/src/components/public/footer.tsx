@@ -74,7 +74,7 @@ export function Footer() {
               </span>
             </Link>
             <p className="mt-4 text-sm leading-relaxed text-gray-400 max-w-xs">
-              The simplest way for Africans to receive international payments and withdraw in USDT. Open USD, GBP, and EUR accounts in minutes.
+              The simplest way for Africans to receive international payments and withdraw to their Nigerian bank account. Open USD, EUR, and NGN accounts in minutes.
             </p>
 
             {/* Download Badges */}

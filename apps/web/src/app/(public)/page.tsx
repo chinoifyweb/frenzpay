@@ -6,7 +6,7 @@ import {
   Wallet, ArrowUpRight, Percent, ShieldCheck, Activity,
   CreditCard, Globe, Zap, Star, MessageCircle, Smartphone,
   Send, RefreshCcw, ArrowRight, BadgeCheck, Lock,
-  Building2, Bitcoin, UserPlus, LogIn,
+  Building2, UserPlus, LogIn,
 } from "lucide-react";
 
 const WHATSAPP_LINK = "https://wa.me/12365997663";
@@ -29,13 +29,6 @@ const platforms = [
 
 const withdrawMethods = [
   {
-    icon: Bitcoin,
-    label: "USDT (Crypto)",
-    sub: "TRC-20 or ERC-20 network",
-    color: "from-amber-500 to-orange-500",
-    badge: "< 5 min",
-  },
-  {
     icon: Building2,
     label: "Naira Account",
     sub: "Any Nigerian bank account",
@@ -48,7 +41,7 @@ const personas = [
   {
     icon: Globe, tag: "Freelancers",
     title: "Get paid from any platform",
-    description: "Share your USD, GBP, or EUR account with clients on Upwork, Fiverr, Amazon, Toptal, or anywhere. Receive payments like a local.",
+    description: "Share your USD or EUR account with clients on Upwork, Fiverr, Amazon, Toptal, or anywhere. Receive payments like a local.",
   },
   {
     icon: Zap, tag: "Remote Workers",
@@ -58,26 +51,25 @@ const personas = [
   {
     icon: Star, tag: "Creators & Nomads",
     title: "Monetize your content globally",
-    description: "Receive YouTube AdSense, Stripe, PayPal, or platform payouts directly. Withdraw in USDT or straight to your Naira account.",
+    description: "Receive YouTube AdSense, Stripe, PayPal, or platform payouts directly. Withdraw straight to your Naira account.",
   },
 ];
 
 const features = [
-  { icon: Wallet,     title: "USD, GBP & EUR Accounts",  description: "Dedicated virtual bank accounts with real routing numbers, IBAN, and sort codes." },
-  { icon: Bitcoin,    title: "USDT Withdrawals",          description: "Convert and withdraw to your USDT wallet on TRC-20 or ERC-20 in under 5 minutes." },
+  { icon: Wallet,     title: "USD & EUR Accounts",        description: "Dedicated virtual bank accounts with real routing numbers and IBAN." },
   { icon: Building2,  title: "Naira Withdrawals",         description: "Withdraw directly to any Nigerian bank account. Funds settle same day." },
   { icon: Percent,    title: "Low, Transparent Fees",     description: "1.5% on withdrawals, 0.5% FX spread. Zero fees on deposits. No hidden charges." },
   { icon: ShieldCheck,title: "Bank-Grade Security",       description: "256-bit AES encryption, mandatory 2FA, full KYC, and real-time fraud monitoring." },
   { icon: CreditCard, title: "Virtual Cards (Coming Soon)",description: "Shop online globally with Frenz Pay virtual Visa and Mastercard cards." },
   { icon: Activity,   title: "Real-Time Dashboard",       description: "Track balances, payments, and withdrawals with instant push notifications." },
-  { icon: RefreshCcw, title: "Instant Conversions",       description: "Convert between USD, GBP, EUR, USDT, and NGN at competitive rates — instantly." },
+  { icon: RefreshCcw, title: "Instant Conversions",       description: "Convert between USD, EUR, and NGN at competitive rates — instantly." },
 ];
 
 const steps = [
   { step: "01", title: "Create your account",   description: "Sign up in under 2 minutes — email + phone, no app required." },
   { step: "02", title: "Verify Your Identity",  description: "Complete KYC with a valid ID and selfie. Most approvals within 24 hours." },
   { step: "03", title: "Get Your Accounts",     description: "Receive virtual USD and EUR accounts with unique banking details ready to share." },
-  { step: "04", title: "Receive & Withdraw",    description: "Share details with payers, receive money, then withdraw in USDC or Naira — your choice." },
+  { step: "04", title: "Receive & Withdraw",    description: "Share details with payers, receive money, then withdraw straight to your Naira bank account." },
 ];
 
 const stats = [
@@ -90,7 +82,7 @@ const stats = [
 const testimonials = [
   {
     initials: "TB", name: "Tunde Bakare", role: "Freelance Developer · Lagos",
-    quote: "Before Frenz Pay, I lost 8–10% on every Upwork payment. Now I receive USD directly and withdraw either in USDT or straight to my Zenith account. Game changer.",
+    quote: "Before Frenz Pay, I lost 8–10% on every Upwork payment. Now I receive USD directly and withdraw straight to my Zenith account. Game changer.",
   },
   {
     initials: "AO", name: "Amara Osei", role: "Content Creator · Accra",
@@ -98,7 +90,7 @@ const testimonials = [
   },
   {
     initials: "CE", name: "Chidinma Eze", role: "Remote Product Designer · Abuja",
-    quote: "My employer pays me through Frenz Pay. I pick USDT when saving and Naira when I need to spend locally. No bank delays, no bad rates.",
+    quote: "My employer pays me through Frenz Pay. The money lands in my USD account and I cash out to Naira whenever I need it. No bank delays, no bad rates.",
   },
 ];
 
@@ -175,14 +167,14 @@ export default function HomePage() {
                   Globally.
                 </span>
                 <br />
-                Withdraw in{" "}
+                Withdraw to{" "}
                 <span style={{ background: "linear-gradient(135deg,#34d399,#10b981)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" }}>
-                  USDT or Naira.
+                  Your Naira Account.
                 </span>
               </h1>
 
               <p className="mt-6 text-lg text-white/80 leading-relaxed max-w-lg">
-                Open USD, GBP, and EUR virtual accounts in minutes. Receive payments from Upwork, Amazon, Fiverr, YouTube, and any platform worldwide — then withdraw in USDT or directly to your Nigerian bank account.
+                Open USD, EUR, and NGN virtual accounts in minutes. Receive payments from Upwork, Amazon, Fiverr, YouTube, and any platform worldwide — then withdraw directly to your Nigerian bank account.
               </p>
 
               {/* Withdraw options chips */}
@@ -261,8 +253,8 @@ export default function HomePage() {
                   <div className="mt-3 space-y-1.5">
                     {[
                       { flag: "🇺🇸", cur: "USD", amt: "$4,280.50", sub: "ACH · Wire · SWIFT" },
-                      { flag: "🇬🇧", cur: "GBP", amt: "£1,920.00", sub: "Faster Payments" },
                       { flag: "🇪🇺", cur: "EUR", amt: "€3,150.75", sub: "SEPA · SWIFT" },
+                      { flag: "🇳🇬", cur: "NGN", amt: "₦4,920,000", sub: "Local transfer" },
                     ].map((a) => (
                       <div key={a.cur} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/5 p-2.5">
                         <div className="flex items-center gap-2">
@@ -280,17 +272,10 @@ export default function HomePage() {
                   {/* Withdraw options */}
                   <div className="mt-3">
                     <p className="text-[10px] text-gray-500 mb-1.5">Withdraw to</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-2 text-center">
-                        <Bitcoin className="w-4 h-4 text-amber-400 mx-auto" />
-                        <p className="text-[10px] font-bold text-white mt-1">USDT</p>
-                        <p className="text-[9px] text-gray-500">TRC-20</p>
-                      </div>
-                      <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-2 text-center">
-                        <Building2 className="w-4 h-4 text-green-400 mx-auto" />
-                        <p className="text-[10px] font-bold text-white mt-1">Naira</p>
-                        <p className="text-[9px] text-gray-500">Any bank</p>
-                      </div>
+                    <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-2 text-center">
+                      <Building2 className="w-4 h-4 text-green-400 mx-auto" />
+                      <p className="text-[10px] font-bold text-white mt-1">Naira</p>
+                      <p className="text-[9px] text-gray-500">Any Nigerian bank</p>
                     </div>
                   </div>
 
@@ -363,33 +348,14 @@ export default function HomePage() {
           <div className="max-w-2xl mx-auto text-center mb-12">
             <span className="inline-block rounded-full bg-blue-50 dark:bg-blue-500/10 px-4 py-1.5 text-sm font-semibold text-blue-600 dark:text-blue-400 mb-4">Withdrawals</span>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-              Withdraw your way
+              Withdraw straight to your bank
             </h2>
             <p className="mt-4 text-lg text-gray-500 dark:text-gray-400">
-              You choose — send to your crypto wallet in USDT or straight to your Nigerian bank account. Both are fast, both are affordable.
+              Cash out to any Nigerian bank account — fast, affordable, no surprises.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-            {/* USDT */}
-            <div className="rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5 p-8">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-5">
-                <Bitcoin className="w-7 h-7 text-white" />
-              </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Withdraw to USDT</h3>
-              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">Perfect for saving in stable crypto or sending abroad. Supports TRC-20 (Tron) and ERC-20 (Ethereum) networks.</p>
-              <ul className="mt-5 space-y-2">
-                {["Arrives in under 5 minutes", "TRC-20 & ERC-20 networks", "1.5% fee only", "Protects against devaluation"].map((f) => (
-                  <li key={f} className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                    <div className="w-4 h-4 rounded-full bg-amber-400 flex items-center justify-center flex-shrink-0">
-                      <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                    </div>
-                    {f}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
+          <div className="grid max-w-xl mx-auto">
             {/* Naira */}
             <div className="rounded-2xl border border-green-200 dark:border-green-500/20 bg-green-50 dark:bg-green-500/5 p-8">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-green-500/30 mb-5">
@@ -418,10 +384,10 @@ export default function HomePage() {
           <div className="max-w-3xl mx-auto text-center">
             <span className="inline-block rounded-full bg-blue-50 dark:bg-blue-500/10 px-4 py-1.5 text-sm font-semibold text-blue-600 dark:text-blue-400 mb-4">What is Frenz Pay?</span>
             <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white leading-tight">
-              Your financial bridge between global platforms and your wallet
+              Your financial bridge between global platforms and your bank account
             </h2>
             <p className="mt-5 text-lg text-gray-500 dark:text-gray-400 leading-relaxed">
-              Frenz Pay gives you real virtual bank accounts in USD, GBP, and EUR — the same kind used by professionals in the US and UK. Share your details with any platform or employer. They pay in fiat. You withdraw in USDT or Naira, your choice.
+              Frenz Pay gives you real virtual bank accounts in USD and EUR — the same kind used by professionals in the US and Europe. Share your details with any platform or employer. They pay in fiat. You hold the balance or cash out to your Nigerian Naira account.
             </p>
           </div>
 
@@ -430,12 +396,12 @@ export default function HomePage() {
               {
                 icon: Wallet, color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400",
                 title: "Real Bank-Level Accounts",
-                body: "USD account includes US routing number and account number. GBP includes UK sort code. EUR includes IBAN. These work on ACH, Faster Payments, SEPA, and SWIFT — accepted by any platform.",
+                body: "USD account includes US routing number and account number. EUR includes IBAN. These work on ACH, SEPA, and SWIFT — accepted by any platform.",
               },
               {
                 icon: ArrowUpRight, color: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400",
-                title: "Two Withdrawal Options",
-                body: "Withdraw in USDT (crypto) for saving and cross-border transfers, or directly to your Nigerian Naira bank account for local spending. You choose every time — no lock-in.",
+                title: "Direct Bank Withdrawals",
+                body: "Withdraw straight to your Nigerian Naira bank account for local spending — same-day settlement, any bank, no lock-in.",
               },
               {
                 icon: ShieldCheck, color: "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400",
@@ -541,21 +507,6 @@ export default function HomePage() {
                   </div>
 
                   <div className="mt-4 space-y-2.5">
-                    {/* USDT option */}
-                    <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-3.5 cursor-pointer">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                            <Bitcoin className="w-4 h-4 text-white" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-white">USDT Wallet</p>
-                            <p className="text-[10px] text-gray-400">TRC-20 · ~5 min</p>
-                          </div>
-                        </div>
-                        <p className="text-xs font-bold text-amber-400">2,450 USDT</p>
-                      </div>
-                    </div>
                     {/* Naira option */}
                     <div className="rounded-2xl border border-green-500/40 bg-green-500/10 p-3.5 cursor-pointer">
                       <div className="flex items-center justify-between">
@@ -575,9 +526,9 @@ export default function HomePage() {
 
                   <div className="mt-4 space-y-2 rounded-xl bg-white/3 border border-white/8 p-3">
                     {[
-                      { l: "Exchange Rate", v: "1 USD = 0.998 USDT" },
+                      { l: "Exchange Rate", v: "1 USD = ₦1,640" },
                       { l: "Withdrawal Fee (1.5%)", v: "-$37.50" },
-                      { l: "Network Fee", v: "-$1.00" },
+                      { l: "Bank Transfer Fee", v: "-$1.00" },
                     ].map((r) => (
                       <div key={r.l} className="flex justify-between text-xs">
                         <span className="text-gray-500">{r.l}</span>
@@ -765,7 +716,7 @@ export default function HomePage() {
           <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Ready to get paid globally?</h2>
           <p className="mt-4 text-lg text-white/80">
             Create your Frenz Pay account and start receiving international payments in minutes.
-            Withdraw in USDC or directly to your Naira bank account.
+            Withdraw directly to your Naira bank account.
           </p>
           <div className="mt-10 flex justify-center"><AppBadges size="lg" /></div>
           <div className="mt-6">

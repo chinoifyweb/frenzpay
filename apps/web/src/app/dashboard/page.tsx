@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { toast } from 'sonner'
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -14,13 +13,11 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
-  Wallet as WalletIcon,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useMe, formatDisplayName } from '@/hooks/use-me'
 
@@ -65,9 +62,6 @@ function formatMinor(amount: string, currency: Currency): string {
   return `${SYMBOL[currency]}${grouped}.${fraction}`
 }
 
-const KYC_TIERS = ['T0', 'T1', 'T2', 'T3'] as const
-const KYC_LABEL = { T0: 'Basic', T1: 'Verified', T2: 'Advanced', T3: 'Premium' } as const
-
 export default function DashboardOverview() {
   const { me, loading: meLoading } = useMe()
 
@@ -75,7 +69,6 @@ export default function DashboardOverview() {
   const [accountsLoading, setAccountsLoading] = useState(true)
   const [recent, setRecent] = useState<TxRow[]>([])
   const [recentLoading, setRecentLoading] = useState(true)
-  const [provisioning, setProvisioning] = useState(false)
 
   // Setup-progress strip: pulls just enough side-state (mfa enrolled,
   // open account requests) to show a 0/5 → 5/5 progress ring like Grey's
@@ -118,26 +111,11 @@ export default function DashboardOverview() {
       .catch(() => setHasAccountRequest(false))
   }, [])
 
-  async function activateWallet() {
-    setProvisioning(true)
-    try {
-      const res = await fetch('/api/accounts/provision', { method: 'POST' })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Failed')
-      toast.success('Wallet activated')
-      await fetchAccounts()
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to activate')
-    } finally { setProvisioning(false) }
-  }
-
   const displayName = formatDisplayName(me)
   const firstName = me?.firstName || displayName.split(' ')[0] || 'there'
   const greeting = getGreeting()
 
   const kycTier = me?.kycTier ?? 'T0'
-  const tierIndex = KYC_TIERS.indexOf(kycTier)
-  const kycProgress = ((tierIndex + 1) / KYC_TIERS.length) * 100
 
   const hasAccounts = (accounts?.accounts.length ?? 0) > 0
   const currencies: Currency[] = ['USD', 'NGN', 'USDC']
@@ -216,16 +194,16 @@ export default function DashboardOverview() {
         )
       })()}
 
-      {/* KYC banner — hidden at T3.
-          The four states it can show:
+      {/* KYC banner — only shown when there is something for the user to do.
+          The three states it can show:
             - PENDING_REVIEW   → "Under review, expect an email within 24h" (no CTA)
             - REJECTED         → "Verification declined, please resubmit" (Resubmit CTA)
             - T0 + NOT_STARTED → "Verify your identity" (Start KYC CTA)
-            - T1/T2 verified   → "Upgrade to next tier" (Continue CTA)
-          The PENDING_REVIEW + REJECTED branches are new — previously the banner
-          read solely off kycTier (which stays T0 until approved), so a customer
-          who'd already submitted still saw "Verify your identity → Start KYC". */}
-      {me && kycTier !== 'T3' && (() => {
+          T1/T2-verified customers no longer see an "Upgrade to Premium" promo here
+          — the platform has no T3 tier ready, so the upgrade CTA was misleading.
+          The PENDING_REVIEW + REJECTED branches handle the case where the
+          customer has submitted but kycTier is still T0 until approval. */}
+      {me && kycTier === 'T0' && (() => {
         const kycStatus = me.kycStatus
         const isPending = kycStatus === 'PENDING_REVIEW'
         const isRejected = kycStatus === 'REJECTED'
@@ -243,22 +221,14 @@ export default function DashboardOverview() {
           ? 'Verification under review'
           : isRejected
             ? 'Verification declined'
-            : kycTier === 'T0'
-              ? 'Verify your identity to start using FrenzPay'
-              : `You’re ${KYC_LABEL[kycTier]} verified`
+            : 'Verify your identity to start using FrenzPay'
         const subtext = isPending
           ? 'We’ve received your documents — our team reviews every submission manually. You’ll get an email within 24 hours with the outcome.'
           : isRejected
             ? 'Your last submission needs a fresh attempt. Open KYC to see the reason and resubmit.'
-            : kycTier === 'T0'
-              ? 'Complete KYC to receive, send, save, and withdraw.'
-              : `Upgrade to ${KYC_LABEL[KYC_TIERS[tierIndex + 1]!]} for higher limits.`
+            : 'Complete KYC to receive, send, save, and withdraw.'
         const showCta = !isPending  // pending = nothing for the user to do
-        const ctaLabel = isRejected
-          ? 'View reason'
-          : kycTier === 'T0'
-            ? 'Start KYC'
-            : 'Continue'
+        const ctaLabel = isRejected ? 'View reason' : 'Start KYC'
         return (
           <Card className={tone}>
             <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
@@ -274,11 +244,6 @@ export default function DashboardOverview() {
                     </Badge>
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{subtext}</p>
-                  {!isPending && !isRejected && (
-                    <div className="mt-3 max-w-sm">
-                      <Progress value={kycProgress} className="h-1.5" />
-                    </div>
-                  )}
                 </div>
               </div>
               {showCta && (
@@ -306,29 +271,12 @@ export default function DashboardOverview() {
           </div>
         ) : !hasAccounts ? (
           <Card className="border-dashed">
-            <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <WalletIcon className="h-6 w-6" />
-              </div>
-              <div className="space-y-1">
-                <p className="font-semibold">Activate your wallet</p>
-                <p className="max-w-md text-sm text-muted-foreground">
-                  Set up USD, NGN, and USDC accounts to start receiving, sending, and saving.
-                </p>
-              </div>
-              {kycTier === 'T0' ? (
-                me?.kycStatus === 'PENDING_REVIEW' ? (
-                  <Badge variant="secondary" className="gap-1.5">Pending review · usually under 24h</Badge>
-                ) : me?.kycStatus === 'REJECTED' ? (
-                  <Button variant="destructive" asChild><Link href="/dashboard/kyc">Resubmit KYC</Link></Button>
-                ) : (
-                  <Button asChild><Link href="/dashboard/kyc">Complete KYC first</Link></Button>
-                )
-              ) : (
-                <Button onClick={activateWallet} disabled={provisioning}>
-                  {provisioning ? 'Activating...' : 'Activate wallet'}
-                </Button>
-              )}
+            <CardContent className="py-6 text-center text-sm text-muted-foreground">
+              No balances yet —{' '}
+              <Link href="/dashboard/accounts" className="font-medium text-primary hover:underline">
+                request a virtual account on the Accounts page
+              </Link>
+              .
             </CardContent>
           </Card>
         ) : (

@@ -1,6 +1,6 @@
 export const APP_NAME = 'Frenz Pay'
 export const APP_DESCRIPTION =
-  'Get paid globally, withdraw in USDT. Receive payments from anywhere in the world with virtual USD, GBP, and EUR accounts.'
+  'Get paid globally and withdraw to your Nigerian bank account. Receive payments from anywhere in the world with virtual USD, EUR, and NGN accounts.'
 export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://frenzpay.co'
 
 export const SUPPORTED_CURRENCIES = ['USD', 'GBP', 'EUR'] as const

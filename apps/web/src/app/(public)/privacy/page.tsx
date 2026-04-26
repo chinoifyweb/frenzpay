@@ -47,7 +47,7 @@ export default function PrivacyPage() {
           </p>
           <p>
             <strong className="text-foreground">Financial information:</strong>{" "}
-            USDT wallet addresses, transaction history, and payment details.
+            Bank account details, transaction history, and payment details.
           </p>
           <p>
             <strong className="text-foreground">Technical data:</strong> IP
@@ -63,7 +63,7 @@ export default function PrivacyPage() {
               Verify your identity in compliance with KYC/AML regulations
             </li>
             <li>
-              Process transactions, including receiving payments and USDT
+              Process transactions, including receiving payments and bank
               withdrawals
             </li>
             <li>Provide customer support</li>

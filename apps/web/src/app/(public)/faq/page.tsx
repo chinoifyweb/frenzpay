@@ -14,27 +14,27 @@ const faqs = [
   {
     question: "How do I receive payments?",
     answer:
-      "After signing up and completing KYC verification, you'll receive dedicated virtual bank accounts in USD, GBP, and EUR. Each account comes with unique banking details (routing number, sort code, or IBAN) that you can share with your employer, freelance platform, or clients. When they send money to your account details, the funds appear in your Frenz Pay balance — typically within 1-2 business days for ACH and SEPA, or same-day for wire transfers and Faster Payments.",
+      "After signing up and completing KYC verification, you'll receive dedicated virtual bank accounts in USD and EUR (and a Naira account for local funding). Each account comes with unique banking details (routing number or IBAN) that you can share with your employer, freelance platform, or clients. When they send money to your account details, the funds appear in your Frenz Pay balance — typically within 1-2 business days for ACH and SEPA, or same-day for wire transfers.",
   },
   {
     question: "What currencies are supported?",
     answer:
-      "Frenz Pay currently supports three currencies for receiving payments: US Dollars (USD), British Pounds (GBP), and Euros (EUR). For withdrawals, we support USDT (Tether) on TRC-20 and ERC-20 networks. We're actively working on adding more currencies and withdrawal options.",
+      "Frenz Pay currently supports three currencies: US Dollars (USD), Euros (EUR), and Nigerian Naira (NGN). You can receive payments into your USD and EUR virtual accounts, hold balances in any of the three, and withdraw to any Nigerian bank account. We're actively working on adding more currencies.",
   },
   {
-    question: "How do USDT withdrawals work?",
+    question: "How do withdrawals to my Nigerian bank work?",
     answer:
-      "To withdraw, simply go to your dashboard, select the currency balance you want to convert, enter the amount, and provide your USDT wallet address. Choose between TRC-20 (lower network fees) or ERC-20 (wider compatibility). We convert your fiat balance to USDT at competitive rates and send it to your wallet. Most withdrawals complete in under 5 minutes.",
+      "To withdraw, go to your dashboard, select the currency balance you want to convert, enter the amount, and choose your Nigerian bank account. We convert your USD or EUR balance to Naira at competitive rates and send it directly to your bank — GTBank, Access, Zenith, First Bank, UBA, and more. Most withdrawals settle the same day.",
   },
   {
     question: "What are the fees?",
     answer:
-      "Frenz Pay charges zero fees for account creation, maintenance, and receiving payments. When you withdraw to USDT, we charge a 1.5% fee on the withdrawal amount. Currency conversion from fiat to USDT includes a 0.5% FX spread. The minimum withdrawal amount is $10. There are no hidden fees — what you see on our pricing page is what you pay.",
+      "Frenz Pay charges zero fees for account creation, maintenance, and receiving payments. When you withdraw to your Naira bank account, we charge a 1.5% fee on the withdrawal amount. Currency conversion to Naira includes a 0.5% FX spread. The minimum withdrawal amount is $10. There are no hidden fees — what you see on our pricing page is what you pay.",
   },
   {
     question: "How long do withdrawals take?",
     answer:
-      "Most USDT withdrawals are processed within 5 minutes. In rare cases, withdrawals may take up to 30 minutes due to network congestion or additional security reviews. You'll receive real-time notifications at every step of the process.",
+      "Most Naira bank withdrawals settle the same day. In rare cases, withdrawals may take longer due to bank processing times or additional security reviews. You'll receive real-time notifications at every step of the process.",
   },
   {
     question: "Is my money safe?",
@@ -54,7 +54,7 @@ const faqs = [
   {
     question: "What platforms can send money to my Frenz Pay account?",
     answer:
-      "Any platform or individual that can send USD, GBP, or EUR via standard banking rails can pay into your Frenz Pay accounts. This includes freelance platforms (Upwork, Fiverr, Toptal), remote employment platforms (Remote.com, Deel, Oyster), direct clients, and employers. Simply share your account details the same way you'd share any bank account information.",
+      "Any platform or individual that can send USD or EUR via standard banking rails can pay into your Frenz Pay accounts. This includes freelance platforms (Upwork, Fiverr, Toptal), remote employment platforms (Remote.com, Deel, Oyster), direct clients, and employers. Simply share your account details the same way you'd share any bank account information.",
   },
   {
     question: "Is there a mobile app?",
