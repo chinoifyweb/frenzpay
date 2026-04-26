@@ -62,6 +62,7 @@ export const NAV_ITEMS = {
     { label: 'Users', href: '/admin/users', icon: 'Users' },
     { label: 'KYC Queue', href: '/admin/kyc', icon: 'ShieldCheck' },
     { label: 'Account Requests', href: '/admin/account-requests', icon: 'Landmark' },
+    { label: 'Virtual Accounts', href: '/admin/accounts', icon: 'Wallet' },
     { label: 'Fraud Flags', href: '/admin/flags', icon: 'AlertTriangle' },
     { label: 'Transactions', href: '/admin/transactions', icon: 'ArrowUpDown' },
     { label: 'Withdrawals', href: '/admin/withdrawals', icon: 'ArrowUpRight' },
