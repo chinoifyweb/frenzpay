@@ -152,7 +152,16 @@ export async function middleware(request: NextRequest) {
   // /admin/* pages are admin-only. Unauthenticated or non-admin users get
   // sent to /admin-login (not the customer /login) so admins sign in under
   // a dedicated surface that checks the admin_users table.
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/api/')) {
+  // Note: '/admin-login' also starts with '/admin' — exclude it
+  // explicitly so we don't redirect the login page to itself
+  // (infinite loop). The page is in the matcher so noCache() still
+  // applies on the way out.
+  if (
+    pathname.startsWith('/admin') &&
+    !pathname.startsWith('/api/') &&
+    pathname !== '/admin-login' &&
+    !pathname.startsWith('/admin-login/')
+  ) {
     if (!isAuthenticated || session!.role !== 'admin') {
       const url = publicUrl('/admin-login');
       if (pathname !== '/admin') url.searchParams.set('next', pathname);
