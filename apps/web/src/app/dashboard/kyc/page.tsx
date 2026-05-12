@@ -522,8 +522,33 @@ function KycForm({
       fd.append('proofOfAddress', proofOfAddress!)
 
       const res = await fetch('/api/kyc/t2', { method: 'POST', body: fd })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? `Submission failed (${res.status})`)
+      // Don't blindly call .json() — when the request times out at the
+      // reverse proxy (LiteSpeed / Cloudflare) or stalls mid-upload on
+      // a flaky mobile network, the response body is an HTML / binary
+      // error page from the proxy, not our JSON. JSON.parse on that
+      // surfaces as "Unexpected token '<' / '' ... is not valid JSON"
+      // which terrifies customers and tells them nothing actionable.
+      // Inspect Content-Type first and translate proxy errors to a
+      // friendly retry message.
+      const contentType = res.headers.get('content-type') ?? ''
+      const isJson = contentType.includes('application/json')
+      if (!isJson) {
+        // Upstream non-JSON response. Most likely cause is a proxy
+        // timeout on a large multipart upload on a slow connection.
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error(
+            'Your upload timed out before reaching our server. This usually means the connection is too slow for the file size. Try recording a shorter liveness video (5–10 seconds) or reconnect to Wi-Fi and try again.',
+          )
+        }
+        throw new Error(
+          `We couldn't read the response from our server (HTTP ${res.status}). Please try again — if it keeps failing, email support@frenzpay.co with a screenshot.`,
+        )
+      }
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const apiMsg = json?.error ?? json?.message
+        throw new Error(apiMsg ?? `Submission failed (${res.status})`)
+      }
       onSubmitted()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Submission failed'
