@@ -12,7 +12,7 @@
 // `activate` handler clears all caches AND broadcasts a reload signal
 // so open tabs flush stale HTML their browser may have disk-cached
 // from a prior bad cache-control response.
-const VERSION = 'v3';
+const VERSION = 'v4';
 const STATIC_CACHE = `frenzpay-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
 
@@ -49,10 +49,16 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Always fresh: API + auth + webhooks
+  // Always fresh: API + auth + webhooks + all Next.js framework
+  // assets. /_next/ paths include content hashes so they're cacheable
+  // long-term at the browser layer; we don't want the SW caching
+  // them because a deploy where the SW updated but the page hadn't
+  // reloaded could serve mismatched chunks ("Application error: a
+  // client-side exception has occurred"). Browser disk cache handles
+  // hashed assets fine.
   if (
     url.pathname.startsWith('/api/') ||
-    url.pathname.startsWith('/_next/webpack-hmr')
+    url.pathname.startsWith('/_next/')
   ) {
     return; // let browser handle
   }
