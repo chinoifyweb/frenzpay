@@ -24,10 +24,14 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  Check,
   CheckCircle2,
   Clock,
   FileImage,
   Loader2,
+  Save,
   Shield,
   ShieldCheck,
   Upload,
@@ -450,6 +454,78 @@ function KycForm({
 
   const requiresBack = ID_TYPES.find(t => t.value === docType)?.requiresBack ?? false
 
+  // ── Multi-step state ────────────────────────────────────────────────────
+  //
+  // The form was a single 1000+ line page that customers got tired of
+  // scrolling through. Split into four ~10-field steps with a progress
+  // bar, Back/Next/Save & exit. Files live on the last step so customers
+  // don't have to hold onto big videos through the whole flow if they
+  // hit a typo on page 1.
+  //
+  // STEP_KEYS lets us iterate + check completeness without copy-paste.
+  const STEPS = ['identity', 'about', 'location', 'documents'] as const
+  type StepKey = (typeof STEPS)[number]
+  const STEP_TITLES: Record<StepKey, string> = {
+    identity: 'Your identity',
+    about: 'Purpose of account',
+    location: 'Address & employment',
+    documents: 'Documents',
+  }
+  const [step, setStep] = useState<StepKey>('identity')
+
+  // Draft autosave (text fields only — files can't be persisted to
+  // localStorage). Restored on mount if a prior draft exists for this
+  // customer. Cleared on successful submit.
+  const draftKey = me?.id ? `frenzpay-kyc-draft-${me.id}` : null
+  useEffect(() => {
+    if (!draftKey) return
+    if (typeof window === 'undefined') return
+    try {
+      const raw = window.localStorage.getItem(draftKey)
+      if (!raw) return
+      const d = JSON.parse(raw) as Record<string, string>
+      // Only restore fields that are currently EMPTY — server-side prefill
+      // wins over a stale local draft.
+      if (!docNumber && d.docNumber) setDocNumber(d.docNumber)
+      if (!firstName && d.firstName) setFirstName(d.firstName)
+      if (!middleName && d.middleName) setMiddleName(d.middleName)
+      if (!lastName && d.lastName) setLastName(d.lastName)
+      if (!dob && d.dob) setDob(d.dob)
+      if (!bvn && d.bvn) setBvn(d.bvn)
+      if (!purposeOfAccount && d.purposeOfAccount) setPurposeOfAccount(d.purposeOfAccount)
+      if (!sourceOfFunds && d.sourceOfFunds) setSourceOfFunds(d.sourceOfFunds)
+      if (!addressLine1 && d.addressLine1) setAddressLine1(d.addressLine1)
+      if (!addressLine2 && d.addressLine2) setAddressLine2(d.addressLine2)
+      if (!city && d.city) setCity(d.city)
+      if (!addressState && d.addressState) setAddressState(d.addressState)
+      if (!postalCode && d.postalCode) setPostalCode(d.postalCode)
+      if (!employmentStatus && d.employmentStatus) setEmploymentStatus(d.employmentStatus)
+      if (!occupation && d.occupation) setOccupation(d.occupation)
+      if (!expectedMonthlyInflowUsd && d.expectedMonthlyInflowUsd) setExpectedMonthlyInflowUsd(d.expectedMonthlyInflowUsd)
+      if (d.docType && (ID_TYPES as readonly { value: string }[]).some(t => t.value === d.docType)) {
+        setDocType(d.docType as IdType)
+      }
+    } catch { /* corrupted draft — ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey])
+
+  // Save draft on every text-field change (debounced via the natural
+  // React batching).
+  useEffect(() => {
+    if (!draftKey) return
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(draftKey, JSON.stringify({
+        docType, docNumber, firstName, middleName, lastName, dob, bvn,
+        purposeOfAccount, sourceOfFunds, addressLine1, addressLine2,
+        city, addressState, postalCode, employmentStatus, occupation,
+        expectedMonthlyInflowUsd,
+      }))
+    } catch { /* localStorage full / disabled — ignore */ }
+  }, [draftKey, docType, docNumber, firstName, middleName, lastName, dob, bvn,
+      purposeOfAccount, sourceOfFunds, addressLine1, addressLine2, city,
+      addressState, postalCode, employmentStatus, occupation, expectedMonthlyInflowUsd])
+
   // 18+ check on DOB. Graph rejects under-18s anyway and downstream
   // compliance requires it; bouncing in-form is a better UX than waiting
   // for the admin to spot it.
@@ -461,26 +537,59 @@ function KycForm({
     return d <= eighteenYearsAgo
   })()
 
-  const canSubmit =
-    docNumber.trim().length >= 5 &&
-    firstName.trim().length >= 2 &&
-    lastName.trim().length >= 2 &&
-    fullLegalName.length >= 4 &&
-    dobLooksValid &&
-    !!purposeOfAccount &&
-    !!sourceOfFunds &&
-    addressLine1.trim().length >= 4 &&
-    city.trim().length >= 2 &&
-    !!addressState &&
-    postalCode.trim().length >= 4 &&
-    !!employmentStatus &&
-    occupation.trim().length >= 2 &&
-    expectedMonthlyInflowUsd.trim().length > 0 &&
-    idFront !== null &&
-    selfie !== null &&
-    liveness !== null &&
-    proofOfAddress !== null &&
-    (!requiresBack || idBack !== null)
+  // Per-step completeness so the Next button gates correctly.
+  // Note: step order matches the source-code order of the form
+  // sections so wrapping each section in a step-conditional is a
+  // pure insert — no JSX reorder.
+  const stepValid: Record<StepKey, boolean> = {
+    identity:
+      docNumber.trim().length >= 5 &&
+      firstName.trim().length >= 2 &&
+      lastName.trim().length >= 2 &&
+      fullLegalName.length >= 4 &&
+      dobLooksValid,
+    about:
+      !!purposeOfAccount &&
+      !!sourceOfFunds,
+    location:
+      addressLine1.trim().length >= 4 &&
+      city.trim().length >= 2 &&
+      !!addressState &&
+      postalCode.trim().length >= 4 &&
+      !!employmentStatus &&
+      occupation.trim().length >= 2 &&
+      expectedMonthlyInflowUsd.trim().length > 0,
+    documents:
+      idFront !== null &&
+      selfie !== null &&
+      liveness !== null &&
+      proofOfAddress !== null &&
+      (!requiresBack || idBack !== null),
+  }
+
+  const canSubmit = STEPS.every(s => stepValid[s])
+
+  function goNext() {
+    setError(null)
+    if (!stepValid[step]) {
+      setError('Please fill every field on this step before continuing.')
+      return
+    }
+    const i = STEPS.indexOf(step)
+    if (i < STEPS.length - 1) setStep(STEPS[i + 1]!)
+  }
+  function goBack() {
+    setError(null)
+    const i = STEPS.indexOf(step)
+    if (i > 0) setStep(STEPS[i - 1]!)
+  }
+  function saveAndExit() {
+    // The autosave effect has already persisted the latest text-field
+    // values to localStorage. Just hand the customer back to their
+    // dashboard with a confirmation so they know their work is safe.
+    toast.success('Your progress is saved. Come back to /dashboard/kyc to continue.')
+    window.location.href = '/dashboard'
+  }
 
   async function submit() {
     setError(null)
@@ -549,6 +658,10 @@ function KycForm({
         const apiMsg = json?.error ?? json?.message
         throw new Error(apiMsg ?? `Submission failed (${res.status})`)
       }
+      // Clear the draft now that the server has the submission.
+      if (draftKey && typeof window !== 'undefined') {
+        try { window.localStorage.removeItem(draftKey) } catch { /* ignore */ }
+      }
       onSubmitted()
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Submission failed'
@@ -559,15 +672,67 @@ function KycForm({
     }
   }
 
+  const currentStepIdx = STEPS.indexOf(step)
+  const progressPct = Math.round(((currentStepIdx + 1) / STEPS.length) * 100)
+
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Shield className="h-4 w-4" />
-          Submit your documents
-        </CardTitle>
+      <CardHeader className="space-y-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Shield className="h-4 w-4" />
+            {STEP_TITLES[step]}
+          </CardTitle>
+          <span className="text-xs text-muted-foreground">
+            Step {currentStepIdx + 1} of {STEPS.length}
+          </span>
+        </div>
+        {/* Progress bar + step dots — gives the customer a visible sense of
+            "almost done" so they don't bail mid-form. */}
+        <div>
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full bg-primary transition-all duration-300"
+              style={{ width: `${progressPct}%` }}
+            />
+          </div>
+          <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wider">
+            {STEPS.map((s, i) => {
+              const isDone = i < currentStepIdx
+              const isCurrent = i === currentStepIdx
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    // Allow jumping BACK to any earlier step, but forward
+                    // only if everything in between is filled in.
+                    if (i <= currentStepIdx) { setStep(s); return }
+                    const allBeforeOk = STEPS.slice(0, i).every(p => stepValid[p])
+                    if (allBeforeOk) setStep(s)
+                  }}
+                  className={cn(
+                    'flex items-center gap-1.5 transition-colors',
+                    isCurrent ? 'text-primary font-semibold' : isDone ? 'text-foreground' : 'text-muted-foreground',
+                  )}
+                >
+                  <span className={cn(
+                    'inline-flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold',
+                    isCurrent ? 'bg-primary text-primary-foreground' : isDone ? 'bg-primary/20 text-primary' : 'bg-muted',
+                  )}>
+                    {isDone ? <Check className="h-2.5 w-2.5" /> : i + 1}
+                  </span>
+                  <span className="hidden sm:inline">{STEP_TITLES[s]}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* ── STEP 1: Identity ───────────────────────────────────────── */}
+        {step === 'identity' && (
+        <div className="space-y-6">
         <div className="space-y-2">
           <Label>Which ID are you submitting?</Label>
           <div className="grid gap-2 sm:grid-cols-3">
@@ -678,7 +843,12 @@ function KycForm({
             </p>
           </div>
         </div>
+        </div>
+        )}
+        {/* ── /STEP 1 ─────────────────────────────────────────────────── */}
 
+        {/* ── STEP 2: About you (purpose + source + employment) ──────── */}
+        {step === 'about' && (
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>What will you use this account for?</Label>
@@ -714,7 +884,12 @@ function KycForm({
             </Select>
           </div>
         </div>
+        )}
+        {/* ── /STEP 2 ─────────────────────────────────────────────────── */}
 
+        {/* ── STEP 3: Location & employment ──────────────────────────── */}
+        {step === 'location' && (
+        <div className="space-y-6">
         {/* ── Residential address ─────────────────────────────────────── */}
         <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
           <div>
@@ -836,7 +1011,12 @@ function KycForm({
             </p>
           </div>
         </div>
+        </div>
+        )}
+        {/* ── /STEP 3 ─────────────────────────────────────────────────── */}
 
+        {/* ── STEP 4: Documents ──────────────────────────────────────── */}
+        {step === 'documents' && (
         <div className="space-y-3">
           <FileUpload
             label="ID — front"
@@ -898,6 +1078,8 @@ function KycForm({
             onChange={setProofOfAddress}
           />
         </div>
+        )}
+        {/* ── /STEP 4 ─────────────────────────────────────────────────── */}
 
         {error && (
           <Alert variant="destructive">
@@ -906,16 +1088,53 @@ function KycForm({
           </Alert>
         )}
 
-        <div className="flex items-center justify-between gap-3 border-t pt-4">
+        {/* ── Navigation: Back / Save & exit / Next or Submit ─────────── */}
+        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              type="button"
+              onClick={goBack}
+              disabled={currentStepIdx === 0 || submitting}
+              className="gap-1.5"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Button>
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={saveAndExit}
+              disabled={submitting}
+              className="gap-1.5 text-muted-foreground"
+            >
+              <Save className="h-4 w-4" />
+              Save &amp; exit
+            </Button>
+          </div>
+          {step !== 'documents' ? (
+            <Button onClick={goNext} disabled={!stepValid[step]} className="gap-1.5">
+              Next
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          ) : (
+            <Button onClick={submit} disabled={!canSubmit || submitting} className="gap-1.5">
+              {submitting ? (
+                <><Loader2 className="h-4 w-4 animate-spin" />Submitting</>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  Submit for review
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+        {step === 'documents' && (
           <p className="text-xs text-muted-foreground">
             By submitting you confirm the information is accurate. False documents may lead to permanent account closure.
           </p>
-          <Button onClick={submit} disabled={!canSubmit || submitting}>
-            {submitting ? (
-              <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Submitting</>
-            ) : 'Submit for review'}
-          </Button>
-        </div>
+        )}
       </CardContent>
     </Card>
   )
