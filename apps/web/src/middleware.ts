@@ -99,6 +99,21 @@ export async function middleware(request: NextRequest) {
 
   const isAuthenticated = session !== null;
 
+  // Single source of truth: stamp every response from this matcher
+  // with x-litespeed-cache-control: no-cache. LSCache's default
+  // behaviour is to cache *any* response (HTML, JSON, redirect) for
+  // 60 seconds based on URL alone — which means an unauthenticated
+  // 401 JSON gets cached and served to a newly-authenticated user,
+  // a 307 redirect to /login gets cached and served to someone who
+  // just logged in, and (worst of all) an RSC binary stream cached
+  // against a URL gets returned to a regular HTML request and shows
+  // up as garbage on screen. Helper applied to every return below.
+  function noCache(res: NextResponse): NextResponse {
+    res.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
+    res.headers.set('cache-control', 'private, no-store, no-cache, max-age=0, must-revalidate');
+    return res;
+  }
+
   // ── API routes: short-circuit auth with 401 JSON ─────────────────────────
   //
   // requireSession() inside route handlers calls redirect('/login') when
@@ -122,15 +137,15 @@ export async function middleware(request: NextRequest) {
     pathname === '/api/contact' ||
     pathname === '/api/waitlist';
   if (pathname.startsWith('/api/') && !isPublicApi && !isAuthenticated) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return noCache(NextResponse.json({ error: 'Unauthorized' }, { status: 401 }));
   }
   if (pathname.startsWith('/api/admin/') && isAuthenticated && session!.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return noCache(NextResponse.json({ error: 'Forbidden' }, { status: 403 }));
   }
 
   // ── Redirect authenticated users away from auth pages ─────────────────────
   if (isAuthenticated && AUTH_PAGES.has(pathname)) {
-    return NextResponse.redirect(publicUrl('/dashboard'));
+    return noCache(NextResponse.redirect(publicUrl('/dashboard')));
   }
 
   // ── Admin area uses its own login page ──────────────────────────────────
@@ -141,9 +156,7 @@ export async function middleware(request: NextRequest) {
     if (!isAuthenticated || session!.role !== 'admin') {
       const url = publicUrl('/admin-login');
       if (pathname !== '/admin') url.searchParams.set('next', pathname);
-      const r = NextResponse.redirect(url);
-      r.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
-      return r;
+      return noCache(NextResponse.redirect(url));
     }
     // Authenticated admin — fall through to the downstream response below.
   }
@@ -153,15 +166,10 @@ export async function middleware(request: NextRequest) {
   if (isProtected && !isAuthenticated) {
     const url = publicUrl('/login');
     url.searchParams.set('redirect', pathname);
-    const r = NextResponse.redirect(url);
-    // LSCache would happily cache a redirect, then serve it to a
-    // newly-authenticated user instead of the real page. Force
-    // bypass.
-    r.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
-    return r;
+    return noCache(NextResponse.redirect(url));
   }
 
-  if (!isAuthenticated) return NextResponse.next();
+  if (!isAuthenticated) return noCache(NextResponse.next());
 
   // From here: session is guaranteed non-null
   const { role, kycTier, userId } = session!;
@@ -170,28 +178,20 @@ export async function middleware(request: NextRequest) {
   if (KYC_T1_PREFIXES.some((p) => pathname.startsWith(p)) && kycTier < 1) {
     const url = publicUrl('/dashboard/kyc');
     url.searchParams.set('required', '1');
-    return NextResponse.redirect(url);
+    return noCache(NextResponse.redirect(url));
   }
 
   if (KYC_T2_PREFIXES.some((p) => pathname.startsWith(p)) && kycTier < 2) {
     const url = publicUrl('/dashboard/kyc');
     url.searchParams.set('required', '2');
-    return NextResponse.redirect(url);
+    return noCache(NextResponse.redirect(url));
   }
 
   // ── Propagate user context to downstream ─────────────────────────────────
   const response = NextResponse.next();
   response.headers.set('x-user-id', userId);
   response.headers.set('x-user-role', role);
-  // LiteSpeed's LSCache module caches responses for 60s by default
-  // even when our Cache-Control says no-store — its own
-  // x-litespeed-cache-control header takes precedence. Without this
-  // explicit opt-out, an authenticated customer's RSC binary stream
-  // gets cached against a URL and served back to the next request,
-  // showing as garbage on screen. Setting the header on every
-  // authenticated response keeps LSCache out of the loop.
-  response.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
-  return response;
+  return noCache(response);
 }
 
 export const config = {
