@@ -141,7 +141,9 @@ export async function middleware(request: NextRequest) {
     if (!isAuthenticated || session!.role !== 'admin') {
       const url = publicUrl('/admin-login');
       if (pathname !== '/admin') url.searchParams.set('next', pathname);
-      return NextResponse.redirect(url);
+      const r = NextResponse.redirect(url);
+      r.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
+      return r;
     }
     // Authenticated admin — fall through to the downstream response below.
   }
@@ -151,7 +153,12 @@ export async function middleware(request: NextRequest) {
   if (isProtected && !isAuthenticated) {
     const url = publicUrl('/login');
     url.searchParams.set('redirect', pathname);
-    return NextResponse.redirect(url);
+    const r = NextResponse.redirect(url);
+    // LSCache would happily cache a redirect, then serve it to a
+    // newly-authenticated user instead of the real page. Force
+    // bypass.
+    r.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
+    return r;
   }
 
   if (!isAuthenticated) return NextResponse.next();
@@ -176,7 +183,14 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set('x-user-id', userId);
   response.headers.set('x-user-role', role);
-
+  // LiteSpeed's LSCache module caches responses for 60s by default
+  // even when our Cache-Control says no-store — its own
+  // x-litespeed-cache-control header takes precedence. Without this
+  // explicit opt-out, an authenticated customer's RSC binary stream
+  // gets cached against a URL and served back to the next request,
+  // showing as garbage on screen. Setting the header on every
+  // authenticated response keeps LSCache out of the loop.
+  response.headers.set('x-litespeed-cache-control', 'no-cache, no-store, private');
   return response;
 }
 

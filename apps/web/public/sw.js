@@ -12,7 +12,7 @@
 // `activate` handler clears all caches AND broadcasts a reload signal
 // so open tabs flush stale HTML their browser may have disk-cached
 // from a prior bad cache-control response.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const STATIC_CACHE = `frenzpay-static-${VERSION}`;
 const OFFLINE_URL = '/offline';
 
