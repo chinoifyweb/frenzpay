@@ -203,11 +203,18 @@ export default function KYCPage() {
       if (tierFilter !== 'ALL') params.set('tier', tierFilter)
 
       const res = await fetch(`/api/admin/kyc?${params.toString()}`)
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        throw new Error(body?.message ?? `Request failed with status ${res.status}`)
+        throw new Error(body?.message ?? body?.error ?? `Request failed with status ${res.status}`)
       }
-      const data: KYCListResponse = await res.json()
+      const data = ((await res.json().catch(() => null)) ?? { submissions: [], pagination }) as KYCListResponse
       setSubmissions(data.submissions)
       setPagination(data.pagination)
     } catch (err) {
@@ -261,6 +268,14 @@ export default function KYCPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
+
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
 
       if (!res.ok) {
         // The route returns { error: '...' }; older code looked for

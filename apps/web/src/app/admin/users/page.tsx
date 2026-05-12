@@ -54,10 +54,12 @@ export default function AdminUsersPage() {
       if (status !== 'ALL') params.set('status', status);
       if (tier !== 'ALL') params.set('tier', tier);
       const res = await fetch(`/api/admin/users?${params}`, { cache: 'no-store' });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) throw new Error();
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error();
       setUsers(json.users ?? []);
-      setPages(json.pagination.pages ?? 1);
+      setPages(json.pagination?.pages ?? 1);
     } catch { toast.error('Failed to load users'); }
     finally { setLoading(false); }
   }, [q, status, tier, page]);
@@ -94,7 +96,14 @@ export default function AdminUsersPage() {
           password: newPassword,
         }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) {
         const fields = json.fields
           ? Object.values(json.fields).flat().join('; ')

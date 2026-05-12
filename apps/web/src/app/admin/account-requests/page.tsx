@@ -131,9 +131,16 @@ export default function AdminAccountRequestsPage() {
     try {
       const params = new URLSearchParams({ status: statusFilter, limit: '50' })
       const res = await fetch(`/api/admin/account-requests?${params}`, { cache: 'no-store' })
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
       if (!res.ok) throw new Error(`Failed (${res.status})`)
-      const json = await res.json()
-      setRows(json.requests)
+      const json = (await res.json().catch(() => null)) ?? {}
+      setRows(json.requests ?? [])
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to load')
     } finally { setLoading(false) }
@@ -173,7 +180,14 @@ export default function AdminAccountRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ dob: dobInput }),
       })
-      const json = await res.json().catch(() => ({}))
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`)
       toast.success('Date of birth saved — you can approve & provision now.')
       // Optimistically flip the local flag so the form disappears and
@@ -203,7 +217,14 @@ export default function AdminAccountRequestsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Action failed (${res.status})`)
       toast.success(action === 'approve' ? 'Approved + provisioned' : 'Rejected')
       close()

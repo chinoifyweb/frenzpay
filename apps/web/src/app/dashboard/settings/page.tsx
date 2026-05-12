@@ -62,7 +62,14 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ firstName, lastName, displayName }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) {
         const first = json?.fields ? (Object.values(json.fields).flat()[0] as string | undefined) : undefined
         throw new Error(first ?? json.error ?? 'Save failed')

@@ -61,7 +61,14 @@ export default function CustomerSecurityPage() {
     setLoading(true)
     try {
       const res = await fetch('/api/auth/mfa', { cache: 'no-store' })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Load failed')
       setState({ enrolled: !!json.enrolled, email: json.email, fullName: json.fullName })
     } catch (err) {
@@ -77,7 +84,14 @@ export default function CustomerSecurityPage() {
     setVerifyCode('')
     try {
       const res = await fetch('/api/auth/mfa/totp-setup', { method: 'POST' })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Setup failed')
       // Render the QR client-side so we never have to ship the otpauth URI
       // through a separate endpoint.
@@ -99,7 +113,14 @@ export default function CustomerSecurityPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: verifyCode, mode: 'setup' }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Wrong code')
       setBackupCodes(json.backupCodes ?? [])
       toast.success('Google Authenticator linked')
@@ -121,7 +142,14 @@ export default function CustomerSecurityPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: disenrollCode }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Failed to disable')
       toast.success('Two-factor authentication removed')
       setDisenrollOpen(false)

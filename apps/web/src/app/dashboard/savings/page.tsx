@@ -221,9 +221,14 @@ export default function SavingsPage() {
         fetch('/api/savings', { cache: 'no-store' }),
         fetch('/api/accounts', { cache: 'no-store' }),
       ])
-      if (locksRes.ok) setLocks(((await locksRes.json()).locks ?? []) as Lock[])
-      if (acctsRes.ok) {
-        const a = await acctsRes.json() as AccountsResponse
+      const locksIsJson = (locksRes.headers.get('content-type') ?? '').includes('application/json')
+      if (locksRes.ok && locksIsJson) {
+        const j = (await locksRes.json().catch(() => null)) ?? {}
+        setLocks((j.locks ?? []) as Lock[])
+      }
+      const acctsIsJson = (acctsRes.headers.get('content-type') ?? '').includes('application/json')
+      if (acctsRes.ok && acctsIsJson) {
+        const a = ((await acctsRes.json().catch(() => null)) ?? {}) as Partial<AccountsResponse>
         setAvailable(a.available ?? {})
       }
     } finally { setLoading(false) }
@@ -285,7 +290,14 @@ export default function SavingsPage() {
             : (goalName.trim() || `${selectedProduct.name} — ${duration}d`),
         }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Failed to start savings')
       toast.success(`${selectedProduct.name} savings started!`)
       setCreateOpen(false)
@@ -304,7 +316,14 @@ export default function SavingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ pin: breakPin }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Failed to unlock')
       toast.success(json.matured ? 'Unlocked — funds are in your wallet.' : 'Broken early. Funds returned.')
       setBreakTarget(null); setBreakPin('')

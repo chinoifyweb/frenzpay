@@ -81,7 +81,12 @@ export default function DashboardOverview() {
     setAccountsLoading(true)
     try {
       const res = await fetch('/api/accounts', { cache: 'no-store' })
-      if (res.ok) setAccounts(await res.json())
+      // Skip .json() entirely on non-JSON responses (proxy error pages, etc).
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (res.ok && isJson) {
+        const json = await res.json().catch(() => null)
+        if (json) setAccounts(json)
+      }
     } finally { setAccountsLoading(false) }
   }, [])
 
@@ -89,9 +94,10 @@ export default function DashboardOverview() {
     setRecentLoading(true)
     try {
       const res = await fetch('/api/transactions?limit=5', { cache: 'no-store' })
-      if (res.ok) {
-        const json = await res.json()
-        setRecent(json.transactions ?? [])
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (res.ok && isJson) {
+        const json = await res.json().catch(() => null)
+        setRecent(json?.transactions ?? [])
       }
     } finally { setRecentLoading(false) }
   }, [])

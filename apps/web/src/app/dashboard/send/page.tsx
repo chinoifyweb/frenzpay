@@ -126,8 +126,9 @@ function SendPageInner() {
     (async () => {
       try {
         const res = await fetch('/api/accounts', { cache: 'no-store' });
-        if (res.ok) {
-          const json = (await res.json()) as AccountsResponse;
+        const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+        if (res.ok && isJson) {
+          const json = ((await res.json().catch(() => null)) ?? {}) as Partial<AccountsResponse>;
           setAvailableByCurrency(json.available ?? {});
         }
       } catch { /* silent */ }
@@ -146,7 +147,12 @@ function SendPageInner() {
     const t = setTimeout(async () => {
       try {
         const res = await fetch(`/api/frenz-tag/lookup?tag=${encodeURIComponent(tag)}`);
-        const json = (await res.json()) as LookupResult;
+        const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+        if (!isJson) {
+          setLookup({ found: false, error: 'Lookup failed — server unreachable' });
+          return;
+        }
+        const json = ((await res.json().catch(() => null)) ?? {}) as LookupResult;
         if (res.ok) {
           setLookup(json);
         } else {
@@ -207,7 +213,14 @@ function SendPageInner() {
           idempotencyKey,
         }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) {
         throw new Error(json.error ?? `Send failed (${res.status})`);
       }

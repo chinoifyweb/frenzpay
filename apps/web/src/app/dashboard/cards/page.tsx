@@ -120,7 +120,14 @@ export default function CardsPage() {
     setListLoading(true)
     try {
       const res = await fetch('/api/cards/graph', { cache: 'no-store' })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Could not load')
       setCards(json.cards ?? [])
       // Auto-select the first card if none selected yet
@@ -164,7 +171,14 @@ export default function CardsPage() {
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({ label: issueLabel, funding_amount: cents }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Issue failed (${res.status})`)
       toast.success('Card is being provisioned — details appear once Graph confirms')
       setIssueOpen(false)
@@ -185,7 +199,14 @@ export default function CardsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Action failed')
       toast.success(newStatus === 'active' ? 'Card unfrozen' : 'Card frozen')
       await fetchCards()
@@ -216,7 +237,14 @@ export default function CardsPage() {
         },
         body: JSON.stringify({ amount: cents }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) {
         // Server says "set up Google Authenticator first" — flag the
         // dialog state so the UI swaps in a clear enrol path instead
@@ -247,7 +275,14 @@ export default function CardsPage() {
     setShowSensitive(false)
     try {
       const res = await fetch(`/api/cards/graph/${selectedCard.id}?decrypt=1`, { cache: 'no-store' })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Could not reveal')
       setRevealData(json)
     } catch (err) {
@@ -261,7 +296,14 @@ export default function CardsPage() {
     setDeleting(true)
     try {
       const res = await fetch(`/api/cards/graph/${selectedCard.id}`, { method: 'DELETE' })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? 'Close failed')
       toast.success('Card closed')
       setDeleteOpen(false)

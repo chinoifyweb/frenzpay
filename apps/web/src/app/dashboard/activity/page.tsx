@@ -318,8 +318,22 @@ export default function ActivityPage() {
     setError(null);
     try {
       const res = await fetch(`/api/transactions?${queryString}`, { method: 'GET', cache: 'no-store' });
-      if (!res.ok) throw new Error(`Failed to load transactions (${res.status})`);
-      const json = (await res.json()) as TransactionsResponse;
+      // Guard against non-JSON responses (proxy timeouts, 5xx HTML pages) so
+      // .json() never blows up with "Unexpected token '<'".
+      const contentType = res.headers.get('content-type') ?? '';
+      const isJson = contentType.includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = ((await res.json().catch(() => null)) ?? {}) as Partial<TransactionsResponse>;
+      if (!res.ok) {
+        const apiMsg = (json as { error?: string; message?: string }).error
+          ?? (json as { error?: string; message?: string }).message;
+        throw new Error(apiMsg ?? `Failed to load transactions (${res.status})`);
+      }
       setData({
         transactions: json.transactions ?? [],
         pagination: json.pagination ?? { page, limit: PAGE_LIMIT, total: 0, pages: 1 },

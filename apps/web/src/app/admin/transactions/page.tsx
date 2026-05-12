@@ -97,7 +97,14 @@ export default function AdminTransactionsPage() {
       if (type !== 'all') params.set('type', type);
       if (currency !== 'all') params.set('currency', currency);
       const res = await fetch(`/api/admin/transactions?${params}`, { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Load failed (${res.status})`);
       setRows(json.transactions ?? []);
     } catch (err) {

@@ -65,7 +65,14 @@ export default function ReportsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currency: proofCurrency }),
       })
-      const json = await res.json().catch(() => ({}))
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`)
       toast.success(`Proof of account queued — we'll email it to ${me?.email ?? 'you'} shortly.`)
       setProofOpen(false)
@@ -93,7 +100,14 @@ export default function ReportsPage() {
           toDate: stmtRange === 'custom' ? stmtToDate : null,
         }),
       })
-      const json = await res.json().catch(() => ({}))
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`)
       toast.success(`Statement queued — we'll email it to ${me?.email ?? 'you'} shortly.`)
       setStmtOpen(false)

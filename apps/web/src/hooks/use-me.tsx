@@ -60,8 +60,19 @@ export function MeProvider({ children }: { children: ReactNode }) {
         setMe(null)
         return
       }
+      // Guard against non-JSON responses (proxy error pages on 5xx/timeouts).
+      // JSON.parse on an HTML body throws "Unexpected token '<'" which would
+      // bubble up as a useless error string in setError. Translate instead.
+      const contentType = res.headers.get('content-type') ?? ''
+      const isJson = contentType.includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
       if (!res.ok) throw new Error(`Failed to load profile (${res.status})`)
-      const json = (await res.json()) as { user?: Me } | Me
+      const json = ((await res.json().catch(() => null)) ?? {}) as { user?: Me } | Me
       // /api/auth/me wraps the user in { user: {...} }; accept either shape so
       // a future flattening of that endpoint doesn't break this hook.
       const user: Me | null =

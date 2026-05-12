@@ -140,7 +140,14 @@ export default function WithdrawalsPage() {
         setRows([]);
         return;
       }
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Load failed (${res.status})`);
       setRows(json.withdrawals ?? []);
     } catch (err) {
@@ -188,7 +195,14 @@ export default function WithdrawalsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'approve' }),
       });
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Approve failed (${res.status})`);
       toast.success('Approved — moved to Processing');
       closeDialog();
@@ -212,7 +226,14 @@ export default function WithdrawalsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'reject', rejectionReason: rejectReason.trim() }),
       });
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Reject failed (${res.status})`);
       toast.success('Rejected. Remember to refund the user manually.', { duration: 6000 });
       closeDialog();
@@ -236,7 +257,14 @@ export default function WithdrawalsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'mark_settled', externalRef: externalRef.trim() }),
       });
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`);
       toast.success('Marked as Settled');
       closeDialog();

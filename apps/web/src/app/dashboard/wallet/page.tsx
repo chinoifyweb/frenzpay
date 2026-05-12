@@ -348,15 +348,25 @@ export default function WalletPage() {
         fetch('/api/accounts', { method: 'GET', cache: 'no-store' }),
         fetch('/api/accounts/external', { method: 'GET', cache: 'no-store' }),
       ]);
+      // Guard against non-JSON responses on the primary accounts call —
+      // a proxy 5xx HTML page would otherwise blow up .json().
+      const accIsJson = (accRes.headers.get('content-type') ?? '').includes('application/json');
+      if (!accIsJson) {
+        if (accRes.status === 0 || accRes.status >= 500 || accRes.status === 408 || accRes.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${accRes.status}).`);
+      }
       if (!accRes.ok) throw new Error(`Failed to load accounts (${accRes.status})`);
-      const json = (await accRes.json()) as AccountsResponse;
+      const json = ((await accRes.json().catch(() => null)) ?? {}) as Partial<AccountsResponse>;
       setData({
         accounts: json.accounts ?? [],
         byCurrency: json.byCurrency ?? {},
         available: json.available ?? {},
       });
-      if (extRes.ok) {
-        const ext = (await extRes.json()) as { accounts: ExternalAccount[] };
+      const extIsJson = (extRes.headers.get('content-type') ?? '').includes('application/json');
+      if (extRes.ok && extIsJson) {
+        const ext = ((await extRes.json().catch(() => null)) ?? {}) as { accounts?: ExternalAccount[] };
         setExternal(ext.accounts ?? []);
       }
     } catch (err) {
@@ -376,7 +386,14 @@ export default function WalletPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currency }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Activation failed (${res.status})`);
       toast.success(json.created ? `${currency} account activated` : `${currency} account ready`);
       await fetchAccounts();

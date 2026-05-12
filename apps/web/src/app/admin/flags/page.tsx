@@ -68,7 +68,14 @@ export default function FlagsPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/flags', { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Load failed (${res.status})`);
       setFlags(json.flags ?? []);
     } catch (err) {
@@ -106,7 +113,14 @@ export default function FlagsPage() {
           }),
         },
       );
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Resolve failed (${res.status})`);
       toast.success('Flag resolved');
       setResolveTarget(null);

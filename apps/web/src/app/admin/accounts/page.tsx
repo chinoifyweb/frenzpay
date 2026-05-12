@@ -66,8 +66,15 @@ export default function AdminAccountsPage() {
       if (status !== 'ALL') p.set('status', status)
       if (q.trim()) p.set('q', q.trim())
       const res = await fetch(`/api/admin/accounts?${p}`, { cache: 'no-store' })
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
       if (!res.ok) throw new Error(`Failed (${res.status})`)
-      const json = await res.json()
+      const json = (await res.json().catch(() => null)) ?? {}
       setRows(json.accounts ?? [])
       setTotal(json.pagination?.total ?? 0)
     } catch (err) {
@@ -83,7 +90,14 @@ export default function AdminAccountsPage() {
     setRefreshingId(id)
     try {
       const res = await fetch(`/api/admin/accounts/${id}/refresh`, { method: 'POST' })
-      const json = await res.json().catch(() => ({}))
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`)
       // Patch the row in place
       setRows(prev => prev.map(r => r.id === id ? {

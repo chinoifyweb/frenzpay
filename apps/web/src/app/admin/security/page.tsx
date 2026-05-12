@@ -68,7 +68,14 @@ export default function AdminSecurityPage() {
     setLoading(true);
     try {
       const res = await fetch('/api/admin/mfa', { cache: 'no-store' });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Load failed');
       setState({
         enrolled: !!json.enrolled,
@@ -93,7 +100,14 @@ export default function AdminSecurityPage() {
     setVerifyCode('');
     try {
       const res = await fetch('/api/admin/mfa/enroll', { method: 'POST' });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Enrolment failed');
       setSecret(json.secret);
       // Render QR code as data URL we can stick into an <img src>
@@ -122,7 +136,14 @@ export default function AdminSecurityPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: verifyCode }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Verify failed');
       toast.success('TOTP enrolled — break-glass ops are now unlocked.');
       setSecret(null);
@@ -148,7 +169,14 @@ export default function AdminSecurityPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: disenrollCode }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Disenrol failed');
       toast.success('TOTP removed');
       setDisenrollOpen(false);

@@ -50,8 +50,12 @@ export default function AdminDashboard() {
     (async () => {
       try {
         const res = await fetch('/api/admin/metrics', { cache: 'no-store' });
+        const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+        if (!isJson) throw new Error();
         if (!res.ok) throw new Error();
-        setData(await res.json());
+        const json = await res.json().catch(() => null);
+        if (!json) throw new Error();
+        setData(json);
       } catch { toast.error('Failed to load metrics'); }
       finally { setLoading(false); }
     })();

@@ -93,9 +93,16 @@ function ReceivePageInner() {
     setError(null);
     try {
       const res = await fetch('/api/accounts/usd', { cache: 'no-store' });
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
       if (!res.ok) throw new Error(`Failed to load (${res.status})`);
-      const json = (await res.json()) as VirtualAccountResponse;
-      setAccount(json.virtualAccount);
+      const json = ((await res.json().catch(() => null)) ?? {}) as Partial<VirtualAccountResponse>;
+      setAccount(json.virtualAccount ?? null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load account';
       setError(msg);
@@ -115,7 +122,14 @@ function ReceivePageInner() {
     setBlockReason(null);
     try {
       const res = await fetch('/api/accounts/usd/provision', { method: 'POST' });
-      const json = (await res.json()) as ProvisionResponse;
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = ((await res.json().catch(() => null)) ?? {}) as ProvisionResponse;
 
       if (!res.ok) {
         if (res.status === 403) {

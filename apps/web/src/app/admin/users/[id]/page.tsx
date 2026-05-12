@@ -177,7 +177,14 @@ export default function AdminUserDetailPage({
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/users/${id}`, { cache: 'no-store' });
-      const json = await res.json().catch(() => ({}));
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Load failed (${res.status})`);
       setData(json);
     } catch (err) {
@@ -421,7 +428,14 @@ export default function AdminUserDetailPage({
                         setRefreshingAccountId(ea.id);
                         try {
                           const res = await fetch(`/api/admin/accounts/${ea.id}/refresh`, { method: 'POST' });
-                          const json = await res.json().catch(() => ({}));
+                          const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+                          if (!isJson) {
+                            if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+                              throw new Error('Server is slow or unreachable, please try again.');
+                            }
+                            throw new Error(`Unexpected error (HTTP ${res.status}).`);
+                          }
+                          const json = (await res.json().catch(() => null)) ?? {};
                           if (!res.ok) throw new Error(json.error ?? `Refresh failed (${res.status})`);
                           toast.success(json.accountNumber ? 'Bank details fetched.' : `Status: ${json.status}. Bank details not yet ready.`);
                           await fetchData();
@@ -710,7 +724,14 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
           documentsReviewed: docs,
         }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Reset failed (${res.status})`);
       toast.success('Customer authenticator reset — they’ll re-enrol on next sign-in');
       setResetMfaOpen(false);
@@ -741,7 +762,16 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ totpCode, reason: reason.trim() }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          toast.error('Server is slow or unreachable, please try again.');
+        } else {
+          toast.error(`Unexpected error (HTTP ${res.status}).`);
+        }
+        return;
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) {
         toast.error(json.error ?? `${modalMode} failed (${res.status})`);
         return;
@@ -773,7 +803,16 @@ function DangerZone({ user }: { user: UserDetail['user'] }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirm: true }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          toast.error('Server is slow or unreachable, please try again.');
+        } else {
+          toast.error(`Unexpected error (HTTP ${res.status}).`);
+        }
+        return;
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) {
         toast.error(json.error ?? `Delete failed (${res.status})`);
         return;

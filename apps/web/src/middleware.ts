@@ -102,13 +102,30 @@ export async function middleware(request: NextRequest) {
   // ── API routes: short-circuit auth with 401 JSON ─────────────────────────
   //
   // requireSession() inside route handlers calls redirect('/login') when
-  // there's no session. For API routes, that becomes a 307 → /login,
-  // the browser fetch follows it, gets HTML, and tries to parse it as
-  // JSON — surfacing as "Unexpected token '<' ... is not valid JSON" in
-  // the admin UI. Catch unauthenticated API hits here and return a
-  // proper 401 JSON instead so the client can handle gracefully.
-  if (pathname.startsWith('/api/admin/') && (!isAuthenticated || session!.role !== 'admin')) {
+  // there's no session. For API routes that becomes a 307 → /login; the
+  // browser fetch follows it, gets HTML, and JSON.parse blows up with
+  // "Unexpected token '<' ... is not valid JSON". Catch unauthenticated
+  // API hits here and return a proper 401 JSON instead so the client
+  // can handle it gracefully.
+  //
+  // Allow-list of API paths that LEGITIMATELY accept anonymous
+  // requests. Anything else under /api/* requires a session.
+  const isPublicApi =
+    pathname.startsWith('/api/auth/') ||         // login, signup, oauth, password reset, verify
+    pathname.startsWith('/api/webhooks/') ||     // provider webhooks (signed)
+    pathname.startsWith('/api/kyc-public/') ||   // token-signed doc serve to Graph
+    pathname.startsWith('/api/cron/') ||         // cron secret in header
+    pathname.startsWith('/api/dev/') ||          // sandbox-only helpers
+    pathname.startsWith('/api/banks/') ||        // public bank lookup
+    pathname === '/api/health' ||
+    pathname === '/api/clear-cache' ||
+    pathname === '/api/contact' ||
+    pathname === '/api/waitlist';
+  if (pathname.startsWith('/api/') && !isPublicApi && !isAuthenticated) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (pathname.startsWith('/api/admin/') && isAuthenticated && session!.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   // ── Redirect authenticated users away from auth pages ─────────────────────
@@ -168,10 +185,12 @@ export const config = {
     '/dashboard/:path*',
     '/author/:path*',
     '/admin/:path*',
-    // Cover admin API routes too so unauthenticated requests get a
-    // 401 JSON instead of redirecting to /login (which a fetch() call
-    // would follow, get HTML, and choke on JSON.parse).
-    '/api/admin/:path*',
+    // Cover ALL API routes so unauthenticated requests get a 401 JSON
+    // instead of redirecting to /login (which a fetch() call would
+    // follow, get HTML, and choke on JSON.parse). The middleware's
+    // isPublicApi allow-list keeps signup / webhooks / cron etc.
+    // reachable without a session.
+    '/api/:path*',
     // /admin-login is intentionally NOT matched — it's the public admin
     // login page and must stay reachable without a session.
     '/settings/:path*',

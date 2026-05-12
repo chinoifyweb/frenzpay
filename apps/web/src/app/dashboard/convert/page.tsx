@@ -118,8 +118,9 @@ export default function ConvertPage() {
     ;(async () => {
       try {
         const res = await fetch('/api/accounts', { cache: 'no-store' })
-        if (res.ok) {
-          const json = (await res.json()) as AccountsResponse
+        const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+        if (res.ok && isJson) {
+          const json = ((await res.json().catch(() => null)) ?? {}) as Partial<AccountsResponse>
           setAvailable(json.available ?? {})
         }
       } catch { /* silent */ }
@@ -158,13 +159,23 @@ export default function ConvertPage() {
       try {
         const url = `/api/convert/quote?from=${from}&to=${to}&amount=${sourceMinor}`
         const res = await fetch(url, { cache: 'no-store', signal: ctrl.signal })
-        const json = await res.json()
-        if (!res.ok) {
+        const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+        if (!isJson) {
           setQuote(null)
-          setQuoteError(json.error ?? 'Quote failed')
+          setQuoteError(
+            res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504
+              ? 'Server is slow or unreachable, please try again.'
+              : `Unexpected error (HTTP ${res.status}).`,
+          )
         } else {
-          setQuote(json as Quote)
-          setQuoteError(null)
+          const json = (await res.json().catch(() => null)) ?? {}
+          if (!res.ok) {
+            setQuote(null)
+            setQuoteError(json.error ?? 'Quote failed')
+          } else {
+            setQuote(json as Quote)
+            setQuoteError(null)
+          }
         }
       } catch (err) {
         if ((err as Error).name === 'AbortError') return
@@ -204,14 +215,25 @@ export default function ConvertPage() {
           idempotencyKey,
         }),
       })
-      const json = await res.json()
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) throw new Error(json.error ?? `Convert failed (${res.status})`)
       toast.success(`Converted ${formatMinor(quote.sourceAmountMinor, quote.fromCurrency)} → ${formatMinor(quote.destAmountMinor, quote.toCurrency)}`)
       setStep('success')
       // Refresh balances for next conversion
       try {
         const a = await fetch('/api/accounts', { cache: 'no-store' })
-        if (a.ok) setAvailable(((await a.json()) as AccountsResponse).available ?? {})
+        const aJson = (a.headers.get('content-type') ?? '').includes('application/json')
+        if (a.ok && aJson) {
+          const parsed = ((await a.json().catch(() => null)) ?? {}) as Partial<AccountsResponse>
+          setAvailable(parsed.available ?? {})
+        }
       } catch { /* silent */ }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Conversion failed'

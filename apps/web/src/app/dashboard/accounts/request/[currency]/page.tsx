@@ -114,7 +114,10 @@ export default function RequestAccountPage() {
   useEffect(() => {
     if (!isSupported) { setLoadingExisting(false); return }
     fetch('/api/account-requests', { cache: 'no-store' })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        const isJson = (r.headers.get('content-type') ?? '').includes('application/json')
+        return r.ok && isJson ? r.json().catch(() => null) : null
+      })
       .then((d) => {
         const requests: Array<{ currency: string; status: string }> = d?.requests ?? []
         const forCurrency = requests.find((r) => r.currency === currency)
@@ -203,8 +206,21 @@ export default function RequestAccountPage() {
           expectedMonthlyInflowCents: parseInt(inflowCents, 10),
         }),
       })
-      const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`)
+      // Guard against non-JSON responses (proxy 5xx HTML pages).
+      const contentType = res.headers.get('content-type') ?? ''
+      const isJson = contentType.includes('application/json')
+      if (!isJson) {
+        if (res.status === 401) {
+          router.push('/login')
+          return
+        }
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.error ?? json?.message ?? `Failed (${res.status})`)
       setExistingRequestStatus('PENDING')
       setStep(3)
     } catch (err) {

@@ -145,7 +145,15 @@ export default function WithdrawPage() {
     setBanksLoading(true);
     try {
       const res = await fetch('/api/banks', { cache: 'no-store' });
-      const json = await res.json();
+      // Guard against non-JSON responses (proxy timeout HTML pages etc).
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Could not load banks');
       setBanks(json.banks ?? []);
     } catch (err) {
@@ -158,7 +166,14 @@ export default function WithdrawPage() {
   const fetchBeneficiaries = useCallback(async () => {
     try {
       const res = await fetch('/api/beneficiaries', { cache: 'no-store' });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Could not load beneficiaries');
       const bens: Beneficiary[] = (json.beneficiaries ?? []).filter(
         (b: Beneficiary) => b.bankCode && b.accountNumber,
@@ -187,7 +202,14 @@ export default function WithdrawPage() {
       setQuoteLoading(true);
       try {
         const res = await fetch('/api/fx/quote?base=USD&quote=NGN', { cache: 'no-store' });
-        const json = await res.json();
+        const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+        if (!isJson) {
+          if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+            throw new Error('Server is slow or unreachable, please try again.');
+          }
+          throw new Error(`Unexpected error (HTTP ${res.status}).`);
+        }
+        const json = (await res.json().catch(() => null)) ?? {};
         if (!res.ok) throw new Error(json.error ?? 'FX fetch failed');
         setQuote({
           midRate: json.midRate,
@@ -220,7 +242,17 @@ export default function WithdrawPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ bank_code: newBankCode, account_number: newAccountNumber }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          setResolveError('Server is slow or unreachable, please try again.');
+        } else {
+          setResolveError(`Unexpected error (HTTP ${res.status}).`);
+        }
+        setNewAccountName('');
+        return;
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) {
         setResolveError(json.error ?? 'Could not verify account');
         setNewAccountName('');
@@ -252,7 +284,14 @@ export default function WithdrawPage() {
           bank_name: bank?.bank_name,
         }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok && res.status !== 409) throw new Error(json.error ?? `Save failed (${res.status})`);
       toast.success('Beneficiary saved');
       setShowNewBeneficiary(false);
@@ -310,7 +349,14 @@ export default function WithdrawPage() {
           rate_id: quote?.rate_id ?? undefined,
         }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) {
         // 403 + enrollRequired means the customer hasn't enrolled TOTP yet.
         // Push them to /dashboard/security with a clear toast — don't

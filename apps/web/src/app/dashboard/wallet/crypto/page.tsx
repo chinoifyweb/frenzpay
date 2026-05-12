@@ -72,7 +72,14 @@ export default function CryptoReceivePage() {
     setListLoading(true);
     try {
       const res = await fetch('/api/deposit-addresses', { cache: 'no-store' });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? 'Could not load');
       setAddresses(json.addresses ?? []);
     } catch (err) {
@@ -94,7 +101,14 @@ export default function CryptoReceivePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currency, network }),
       });
-      const json = await res.json();
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json');
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.');
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`);
+      }
+      const json = (await res.json().catch(() => null)) ?? {};
       if (!res.ok) throw new Error(json.error ?? `Failed (${res.status})`);
       toast.success(
         json.reused

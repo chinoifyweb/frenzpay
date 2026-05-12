@@ -262,7 +262,14 @@ export default function AdminProvidersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider: id }),
       })
-      const json = (await res.json()) as TestResult
+      const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
+      if (!isJson) {
+        if (res.status === 0 || res.status >= 500 || res.status === 408 || res.status === 504) {
+          throw new Error('Server is slow or unreachable, please try again.')
+        }
+        throw new Error(`Unexpected error (HTTP ${res.status}).`)
+      }
+      const json = ((await res.json().catch(() => null)) ?? { ok: false, statusCode: null, latencyMs: 0, message: 'Invalid response' }) as TestResult
       setTestResults((prev) => ({ ...prev, [id]: json }))
       if (json.ok) toast.success(`${id} — ${json.message}`)
       else toast.error(`${id} — ${json.message}`)
