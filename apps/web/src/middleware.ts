@@ -205,8 +205,12 @@ export const config = {
     // isPublicApi allow-list keeps signup / webhooks / cron etc.
     // reachable without a session.
     '/api/:path*',
-    // /admin-login is intentionally NOT matched — it's the public admin
-    // login page and must stay reachable without a session.
+    // /admin-login IS matched so the middleware can stamp it with
+    // no-cache headers (LSCache would otherwise serve a cached
+    // prerender to a new admin and the page paints as binary on
+    // first load). The middleware lets it through to the page
+    // because it falls outside every gate.
+    '/admin-login',
     '/settings/:path*',
     '/login',
     '/signup',
