@@ -65,6 +65,21 @@ export default function DashboardError({
         <p className="text-sm text-muted-foreground">
           This usually means your browser is holding onto an old copy of the app from a previous visit. A fresh reload will fix it.
         </p>
+        {/* Surface the actual error so a customer reporting it can paste
+            us a useful message instead of just "something went wrong".
+            Until Sentry is wired (SENTRY_DSN env var), this is our only
+            window into prod render errors. */}
+        {error.message && (
+          <details className="mt-3 text-left">
+            <summary className="cursor-pointer text-xs text-muted-foreground hover:underline">
+              Show technical details (for support)
+            </summary>
+            <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-muted/40 p-2 text-[10px] leading-tight text-left">
+              {error.message}
+              {error.stack ? '\n\n' + error.stack.split('\n').slice(0, 6).join('\n') : ''}
+            </pre>
+          </details>
+        )}
       </div>
       <div className="flex flex-col items-stretch gap-2 w-full sm:flex-row sm:justify-center">
         <button

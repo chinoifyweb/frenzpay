@@ -47,19 +47,29 @@ const CURRENCY_GRADIENT: Record<Currency, string> = {
   USDC: 'from-indigo-500/10 via-indigo-500/5 to-transparent',
 }
 
-function formatMinor(amount: string, currency: Currency): string {
-  const raw = (amount ?? '0').replace(/[^0-9]/g, '') || '0'
-  const decimals = DECIMALS[currency]
-  const padded = raw.padStart(decimals + 1, '0')
-  const whole = padded.slice(0, padded.length - decimals)
-  let fraction = padded.slice(padded.length - decimals)
-  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-  if (currency === 'USDC') {
-    fraction = fraction.replace(/0+$/, '')
-    if (fraction.length < 2) fraction = fraction.padEnd(2, '0')
-    return `${grouped}.${fraction} USDC`
+function formatMinor(amount: string | null | undefined, currency: Currency | string): string {
+  // Defensive at every step — render errors in this helper crash the
+  // whole dashboard via the error boundary. Wrapping the body in
+  // try/catch + falling back to `'CCY —'` keeps a single weird row
+  // from nuking the page.
+  try {
+    const safeCurrency = (currency as Currency)
+    const raw = (amount ?? '0').toString().replace(/[^0-9]/g, '') || '0'
+    const decimals = DECIMALS[safeCurrency] ?? 2
+    const padded = raw.padStart(decimals + 1, '0')
+    const whole = padded.slice(0, padded.length - decimals)
+    let fraction = padded.slice(padded.length - decimals)
+    const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+    if (safeCurrency === 'USDC') {
+      fraction = fraction.replace(/0+$/, '')
+      if (fraction.length < 2) fraction = fraction.padEnd(2, '0')
+      return `${grouped}.${fraction} USDC`
+    }
+    const sym = SYMBOL[safeCurrency] ?? ''
+    return `${sym}${grouped}.${fraction}`
+  } catch {
+    return `${currency} —`
   }
-  return `${SYMBOL[currency]}${grouped}.${fraction}`
 }
 
 export default function DashboardOverview() {
@@ -85,8 +95,20 @@ export default function DashboardOverview() {
       const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
       if (res.ok && isJson) {
         const json = await res.json().catch(() => null)
-        if (json) setAccounts(json)
+        // Normalise to a known-safe shape before storing so the render
+        // code can't trip on a missing field. Real API returns
+        // { accounts: [...], byCurrency: {...}, available: {...} }
+        // but if anything upstream changes that shape, we still render.
+        if (json && typeof json === 'object') {
+          setAccounts({
+            accounts: Array.isArray(json.accounts) ? json.accounts : [],
+            available: (json.available && typeof json.available === 'object') ? json.available : {},
+          })
+        }
       }
+    } catch {
+      // Don't block render on a network blip — leave accounts null
+      // and the empty state takes over.
     } finally { setAccountsLoading(false) }
   }, [])
 
@@ -97,8 +119,10 @@ export default function DashboardOverview() {
       const isJson = (res.headers.get('content-type') ?? '').includes('application/json')
       if (res.ok && isJson) {
         const json = await res.json().catch(() => null)
-        setRecent(json?.transactions ?? [])
+        setRecent(Array.isArray(json?.transactions) ? json.transactions : [])
       }
+    } catch {
+      // network blip, leave recent as empty
     } finally { setRecentLoading(false) }
   }, [])
 
@@ -123,7 +147,11 @@ export default function DashboardOverview() {
 
   const kycTier = me?.kycTier ?? 'T0'
 
-  const hasAccounts = (accounts?.accounts.length ?? 0) > 0
+  // Defensive — older API shapes or partial responses might leave
+  // accounts.accounts as undefined despite the type declaration.
+  const hasAccounts = Array.isArray(accounts?.accounts) && accounts.accounts.length > 0
+  const available: Partial<Record<Currency, string>> =
+    (accounts?.available && typeof accounts.available === 'object') ? accounts.available : {}
   const currencies: Currency[] = ['USD', 'NGN', 'USDC']
 
   return (
@@ -297,7 +325,7 @@ export default function DashboardOverview() {
                     <Badge variant="secondary" className="font-mono text-[10px]">{c}</Badge>
                   </div>
                   <p className="mt-2 break-all text-2xl font-semibold tracking-tight">
-                    {formatMinor(accounts!.available[c] ?? '0', c)}
+                    {formatMinor(available[c] ?? '0', c)}
                   </p>
                 </CardContent>
               </Card>
@@ -341,40 +369,48 @@ export default function DashboardOverview() {
               </div>
             ) : (
               <div className="divide-y">
-                {recent.map(tx => (
+                {recent.map((tx, idx) => (
                   <Link
-                    key={tx.id}
+                    // Fall back to index if a transaction is missing an
+                    // id — React's missing-key warning is preferable to
+                    // a render crash.
+                    key={tx?.id ?? `tx-${idx}`}
                     href="/dashboard/activity"
                     className="flex items-center justify-between gap-3 p-4 hover:bg-muted/50 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <div className={
                         'flex h-9 w-9 shrink-0 items-center justify-center rounded-full ' +
-                        (tx.direction === 'in' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
-                        : tx.direction === 'out' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
+                        (tx?.direction === 'in' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400'
+                        : tx?.direction === 'out' ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400'
                         : 'bg-muted text-muted-foreground')
                       }>
-                        {tx.direction === 'in' ? <ArrowDownLeft className="h-4 w-4" />
-                         : tx.direction === 'out' ? <ArrowUpRight className="h-4 w-4" />
+                        {tx?.direction === 'in' ? <ArrowDownLeft className="h-4 w-4" />
+                         : tx?.direction === 'out' ? <ArrowUpRight className="h-4 w-4" />
                          : <ArrowLeftRight className="h-4 w-4" />}
                       </div>
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium capitalize">
-                          {tx.type.toLowerCase().replace(/_/g, ' ')}
+                          {(tx?.type ?? '').toLowerCase().replace(/_/g, ' ')}
                         </p>
                         <p className="truncate text-xs text-muted-foreground">
-                          {new Date(tx.postedAt ?? tx.createdAt).toLocaleString()}
+                          {(() => {
+                            const raw = tx?.postedAt ?? tx?.createdAt
+                            if (!raw) return ''
+                            const d = new Date(raw)
+                            return Number.isNaN(d.getTime()) ? '' : d.toLocaleString()
+                          })()}
                         </p>
                       </div>
                     </div>
                     <p className={
                       'font-mono text-sm font-medium whitespace-nowrap ' +
-                      (tx.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400'
-                      : tx.direction === 'out' ? 'text-red-600 dark:text-red-400'
+                      (tx?.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400'
+                      : tx?.direction === 'out' ? 'text-red-600 dark:text-red-400'
                       : '')
                     }>
-                      {tx.direction === 'in' ? '+' : tx.direction === 'out' ? '-' : ''}
-                      {formatMinor(tx.amount, (tx.currency as Currency) ?? 'USD')}
+                      {tx?.direction === 'in' ? '+' : tx?.direction === 'out' ? '-' : ''}
+                      {formatMinor(tx?.amount, (tx?.currency as Currency) ?? 'USD')}
                     </p>
                   </Link>
                 ))}
