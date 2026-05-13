@@ -46,7 +46,19 @@ const SignupSchema = z.object({
     .refine((v) => /[0-9]/.test(v), 'Must contain a number')
     .refine((v) => /[^A-Za-z0-9]/.test(v), 'Must contain a special character'),
   firstName: z.string().min(1).max(50).trim(),
-  middleName: z.string().min(2, 'Middle name required (min 2 chars)').max(60).trim(),
+  // middleName is OPTIONAL — many Nigerian IDs (NIN, certain
+  // passports) have only first + last. Forcing customers to invent
+  // a middle name caused name-mismatch KYC rejections AND, when the
+  // form didn't send the field at all, made signup hard-fail with
+  // a 422 "Required" that the UI showed as "something went wrong".
+  // Empty string normalises to undefined so downstream code sees a
+  // proper "no middle name" signal.
+  middleName: z
+    .string()
+    .max(60)
+    .trim()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
   lastName: z.string().min(1).max(50).trim(),
   agreedToTerms: z.literal(true, {
     errorMap: () => ({ message: 'You must accept the Terms of Service' }),

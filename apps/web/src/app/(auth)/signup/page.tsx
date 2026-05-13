@@ -24,10 +24,15 @@ type Step = 'form' | 'verify_email'
 const signupSchema = z
   .object({
     firstName: z.string().min(2, 'First name must be at least 2 characters'),
+    // Optional — not every customer has a middle name on their ID
+    // (NIN, certain passports). Validating it as required here blocked
+    // signups silently for ~4 weeks; many customers gave up rather than
+    // invent a middle name to satisfy the form.
     middleName: z
       .string()
-      .min(2, 'Middle name must be at least 2 characters as on your ID')
-      .max(60, 'Middle name is too long'),
+      .max(60, 'Middle name is too long')
+      .optional()
+      .or(z.literal('')),
     lastName: z.string().min(2, 'Last name must be at least 2 characters'),
     email: z.string().email('Please enter a valid email address'),
     phone: z
@@ -123,13 +128,34 @@ export default function SignupPage() {
           phone,
           password: data.password,
           firstName: data.firstName,
-          middleName: data.middleName,
+          // Omit middleName entirely when empty so the server schema's
+          // optional() path is hit cleanly. Sending '' would still
+          // round-trip but this is the unambiguous shape.
+          ...(data.middleName && data.middleName.trim()
+            ? { middleName: data.middleName.trim() }
+            : {}),
           lastName: data.lastName,
           agreedToTerms: data.agreeTerms,
         }),
       })
 
-      const json = await res.json()
+      // Defensive: don't blindly call .json() on the response. If the
+      // proxy times out or returns an HTML error page (e.g. 504 from
+      // LSWS on a slow phone connection), JSON.parse explodes with
+      // "Unexpected token '<' ..." which we used to surface as the
+      // customer-terrifying generic error.
+      const ct = res.headers.get('content-type') ?? ''
+      const isJson = ct.includes('application/json')
+      if (!isJson) {
+        if (res.status >= 500 || res.status === 408 || res.status === 504) {
+          toast.error('Server is slow or unreachable. Please check your connection and try again.')
+        } else {
+          toast.error(`We hit an unexpected error (HTTP ${res.status}). Try again or email support@frenzpay.co.`)
+        }
+        setIsLoading(false)
+        return
+      }
+      const json = (await res.json().catch(() => null)) ?? {}
       if (!res.ok) {
         toast.error(json.error || 'Signup failed')
         return
@@ -313,10 +339,13 @@ export default function SignupPage() {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="middleName">Middle Name</Label>
+            <Label htmlFor="middleName">
+              Middle Name <span className="text-xs text-muted-foreground font-normal">(optional)</span>
+            </Label>
             <Input
               id="middleName"
               type="text"
+              placeholder="Leave blank if your ID has none"
               autoComplete="additional-name"
               aria-invalid={!!errors.middleName}
               {...register('middleName')}
