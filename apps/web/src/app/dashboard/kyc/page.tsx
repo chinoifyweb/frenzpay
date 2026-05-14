@@ -393,6 +393,13 @@ function KycForm({
   onSubmitted: () => void
   prefill: PrefillData | null
 }) {
+  // Pull the current user so the draft-autosave key can be scoped to
+  // their id. Without this hook the line `me?.id` below would throw
+  // ReferenceError: me is not defined on every render — which is
+  // exactly the bug that was crashing the KYC page with 'Something
+  // went wrong on this page' for every customer who opened it.
+  const { me } = useMe()
+
   // Prefill on mount from the last submission. Files are NEVER prefilled
   // (they live encrypted on disk under a per-DEK envelope and the
   // browser can't reconstruct a File handle from a server-decrypted
