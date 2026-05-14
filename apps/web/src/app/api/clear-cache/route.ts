@@ -30,9 +30,11 @@ import { NextResponse } from 'next/server';
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const next = url.searchParams.get('next') || '/admin-login';
-  // Only allow same-origin redirects.
-  const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/admin-login';
+  // Default to homepage — works for both customers and admins. If the
+  // caller knows where they want to land they pass ?next=/some/path.
+  const next = url.searchParams.get('next') || '/';
+  // Only allow same-origin redirects to prevent open-redirect abuse.
+  const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
 
   const res = NextResponse.redirect(new URL(safeNext, url.origin), { status: 302 });
   // Wipe everything browser-side for this origin. The 'cache' directive

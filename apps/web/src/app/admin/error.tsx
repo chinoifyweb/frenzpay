@@ -20,21 +20,25 @@ export default function AdminError({
     console.error('[admin/error]', error);
   }, [error]);
 
-  function hardReload() {
+  async function hardReload() {
     if (typeof window === 'undefined') return;
+    // See dashboard/error.tsx — Cache API delete doesn't touch the
+    // browser HTTP cache, so we route through /api/clear-cache which
+    // responds with Clear-Site-Data and wipes everything.
     try {
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.getRegistrations().then((regs) => {
-          regs.forEach((r) => void r.unregister());
-        }).catch(() => {});
-      }
-      if ('caches' in window) {
-        window.caches.keys().then((keys) => keys.forEach((k) => window.caches.delete(k))).catch(() => {});
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
       }
     } catch { /* ignore */ }
-    const url = new URL(window.location.href);
-    url.searchParams.set('_r', String(Date.now()));
-    window.location.replace(url.toString());
+    try {
+      if ('caches' in window) {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((k) => window.caches.delete(k).catch(() => false)));
+      }
+    } catch { /* ignore */ }
+    const next = window.location.pathname.startsWith('/admin') ? window.location.pathname : '/admin';
+    window.location.replace(`/api/clear-cache?next=${encodeURIComponent(next)}`);
   }
 
   return (

@@ -35,22 +35,40 @@ export default function DashboardError({
     console.error('[dashboard/error]', error);
   }, [error]);
 
-  function hardReload() {
+  async function hardReload() {
     if (typeof window === 'undefined') return;
+    // We have to clear THREE different caches and they all have
+    // different APIs:
+    //   1. Service Worker registrations + Cache API — JS-clearable
+    //   2. Browser HTTP/disk cache — only the server can clear via
+    //      the Clear-Site-Data response header (Cache API delete does
+    //      NOT touch HTTP cache; that was the bug here — stale JS
+    //      chunks kept running even after a deploy).
+    //   3. localStorage / IndexedDB — Clear-Site-Data: "storage"
+    //      covers this too.
+    //
+    // /api/clear-cache returns a redirect with
+    // `Clear-Site-Data: "cache", "storage"`, which all modern browsers
+    // honour by wiping everything. We hand it the URL we want to
+    // land on after the wipe so the customer isn't bounced to
+    // /admin-login by mistake.
     try {
-      // Tell the SW to drop its caches, then bust the URL.
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.getRegistrations().then((regs) => {
-          regs.forEach((r) => void r.unregister());
-        }).catch(() => {});
-      }
-      if ('caches' in window) {
-        window.caches.keys().then((keys) => keys.forEach((k) => window.caches.delete(k))).catch(() => {});
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.unregister().catch(() => {})));
       }
     } catch { /* ignore */ }
-    const url = new URL(window.location.href);
-    url.searchParams.set('_r', String(Date.now()));
-    window.location.replace(url.toString());
+    try {
+      if ('caches' in window) {
+        const keys = await window.caches.keys();
+        await Promise.all(keys.map((k) => window.caches.delete(k).catch(() => false)));
+      }
+    } catch { /* ignore */ }
+
+    // Route through /api/clear-cache so the response carries
+    // Clear-Site-Data and the browser wipes its HTTP cache.
+    const next = `/dashboard${typeof window !== 'undefined' && window.location.pathname.startsWith('/dashboard') ? window.location.pathname.slice('/dashboard'.length) : ''}`;
+    window.location.replace(`/api/clear-cache?next=${encodeURIComponent(next)}`);
   }
 
   return (
