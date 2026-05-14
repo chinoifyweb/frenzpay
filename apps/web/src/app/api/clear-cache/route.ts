@@ -36,7 +36,19 @@ export async function GET(req: Request) {
   // Only allow same-origin redirects to prevent open-redirect abuse.
   const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
 
-  const res = NextResponse.redirect(new URL(safeNext, url.origin), { status: 302 });
+  // Rebuild the public-facing origin from the forwarded headers — the
+  // raw request URL is `http://localhost:3200/...` because Next.js
+  // standalone is behind LSWS, and constructing the redirect against
+  // that origin would dump customers on a non-routable URL.
+  const fwdProto = req.headers.get('x-forwarded-proto');
+  const fwdHost = req.headers.get('x-forwarded-host');
+  const host = fwdHost ?? req.headers.get('host');
+  const publicOrigin =
+    host && !host.startsWith('127.0.0.1') && !host.startsWith('localhost')
+      ? `${fwdProto ?? 'https'}://${host}`
+      : url.origin;
+
+  const res = NextResponse.redirect(new URL(safeNext, publicOrigin), { status: 302 });
   // Wipe everything browser-side for this origin. The 'cache' directive
   // alone fixes the disk-cache pinning; 'storage' also clears IDB +
   // localStorage as a belt+braces in case the SW left stale entries.
